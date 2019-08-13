@@ -17,7 +17,7 @@
 */
 ?>
 <?php
-echo $this->Html->css('roboto');
+//echo $this->Html->css('roboto');
 echo $this->Html->css('bootstrap');
 echo $this->Html->css('bootstrap-datepicker');
 echo $this->Html->css('bootstrap-timepicker');
@@ -30,4 +30,5 @@ echo $this->Html->script('bootstrap-timepicker');
 echo $this->Html->script('bootstrap-datepicker');
 echo $this->Html->script('bootstrap-colorpicker');
 echo $this->Html->script('misp.js?' . $queryVersion);
+echo $this->Html->script('keyboard-shortcuts.js?' . $queryVersion);
 echo $content_for_layout; ?>

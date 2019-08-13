@@ -24,7 +24,8 @@ $config = array(
 			'cached_attachments'             => true,
 			'email'                          => 'email@address.com',
 			'contact'                        => 'email@address.com',
-			'cveurl'                         => 'http://cve.circl.lu/cve/',
+			'cveurl'                         => 'https://cve.circl.lu/cve/',
+			'cweurl'                         => 'https://cve.circl.lu/cwe/',
 			'disablerestalert'               => false,
 			'default_event_distribution'     => '1',
 			'default_attribute_distribution' => 'event',
@@ -36,6 +37,7 @@ $config = array(
 			'take_ownership_xml_import'      => false,
 			'unpublishedprivate'             => false,
 			'disable_emailing'               => false,
+			'manage_workers'                 => true,
 			'Attributes_Values_Filter_In_Event' => 'id, uuid, value, comment, type, category, Tag.name',
 		),
 	'GnuPG'            =>
@@ -44,7 +46,8 @@ $config = array(
 			'email'             => '',
 			'homedir'           => '',
 			'password'          => '',
-			'bodyonlyencrypted' => false,
+            'bodyonlyencrypted' => false,
+            'sign'              => true,
 		),
 	'SMIME'            =>
 		array(
@@ -121,6 +124,15 @@ $config = array(
 			'DefaultOrg'        => 'DEFAULT_ORG',
 		),
 	*/
+	/*
+	'LinOTPAuth' => // Configuration for the LinOTP authentication
+	    array(
+	        'baseUrl' => 'https://linotp', // The base URL of LinOTP
+	        'realm' => 'lino', // the (default) realm of all the users logging in through this system
+	        'userModel' => 'User', // name of the User class (MISP class) to check if the user exists
+            'userModelKey' => 'email', // User field that will be used for querying.
+        ),
+	*/
 	// Warning: The following is a 3rd party contribution and still untested (including security) by the MISP-project team.
 	// Feel free to enable it and report back to us if you run into any issues.
 	//
@@ -132,6 +144,7 @@ $config = array(
 			'apacheEnv'          => 'REMOTE_USER',           // If proxy variable = HTTP_REMOTE_USER
 			'ldapServer'         => 'ldap://example.com',   // FQDN or IP
 			'ldapProtocol'       => 3,
+			'ldapNetworkTimeout' => -1,  // use -1 for unlimited network timeout
 			'ldapReaderUser'     => 'cn=userWithReadAccess,ou=users,dc=example,dc=com', // DN ou RDN LDAP with reader user right
 			'ldapReaderPassword' => 'UserPassword', // the LDAP reader user password
 			'ldapDN'             => 'dc=example,dc=com',
@@ -154,7 +167,10 @@ $config = array(
 			//                         'misp_readonly' => 6,
 			//                         ),
 			//
-			'ldapDefaultOrg'     => '1',      // uses 1st local org in MISP if undefined
+			'ldapDefaultOrg'     => '1',      // uses 1st local org in MISP if undefined,
+			'ldapAllowReferrals' => true,   // allow or disallow chasing LDAP referrals
+			//'ldapEmailField' => array('emailAddress, 'mail'), // Optional : fields from which the email address should be retrieved. Default to 'mail' only. If more than one field is set (e.g. 'emailAddress' and 'mail' in this example), only the first one will be used.
+			//'updateUser' => true, // Optional : Will update user on LDAP login to update user fields (e.g. role)
 		),
 	*/
 );

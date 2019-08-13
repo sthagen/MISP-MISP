@@ -50,19 +50,36 @@
   <td class="short context hidden">
     <?php echo h($object['uuid']); ?>
   </td>
-  <td colspan="<?php echo $fieldCount; ?>" style="font-weight:bold;text-align:left;width:100%;">DELETE</td>
+  <td style="font-weight:bold;text-align:left;">DELETE</td>
+  <?php
+    if ($extended):
+  ?>
+    <td class="short">
+      <?php echo '<a href="' . $baseurl . '/events/view/' . h($object['event_id']) . '" class="white">' . h($object['event_id']) . '</a>'; ?>
+    </td>
+  <?php
+    endif;
+  ?>
+  <td class="short">
+  <?php
+    if (isset($object['Org']['name'])) {
+      echo $this->OrgImg->getOrgImg(array('name' => $object['Org']['name'], 'id' => $object['Org']['id'], 'size' => 24));
+    }
+  ?>
+  </td>
+  <td colspan="<?php echo $fieldCount; ?>">&nbsp;</td>
   <td class="short action-links">
     <?php
         if (($event['Orgc']['id'] == $me['org_id'] && $mayModify) || $isSiteAdmin) {
           echo $this->Form->create('Shadow_Attribute', array('id' => 'ShadowAttribute_' . $object['id'] . '_accept', 'url' => '/shadow_attributes/accept/' . $object['id'], 'style' => 'display:none;'));
           echo $this->Form->end();
         ?>
-          <span class="icon-ok icon-white useCursorPointer" title="Accept Proposal" role="button" tabindex="0" aria-label="Accept proposal" onClick="acceptObject('shadow_attributes', '<?php echo $object['id']; ?>', '<?php echo $event['Event']['id']; ?>');"></span>
+          <span class="icon-ok icon-white useCursorPointer" title="<?php echo __('Accept Proposal');?>" role="button" tabindex="0" aria-label="<?php echo __('Accept proposal');?>" onClick="acceptObject('shadow_attributes', '<?php echo $object['id']; ?>', '<?php echo $event['Event']['id']; ?>');"></span>
         <?php
         }
         if (($event['Orgc']['id'] == $me['org_id'] && $mayModify) || $isSiteAdmin || ($object['org_id'] == $me['org_id'])) {
         ?>
-          <span class="icon-trash icon-white useCursorPointer" title="Discard proposal" role="button" tabindex="0" aria-label="Discard proposal" onClick="deleteObject('shadow_attributes', 'discard' ,'<?php echo $object['id']; ?>', '<?php echo $event['Event']['id']; ?>');"></span>
+          <span class="fa fa-trash icon-white useCursorPointer" title="<?php echo __('Discard proposal');?>" role="button" tabindex="0" aria-label="<?php echo __('Discard proposal');?>" onClick="deleteObject('shadow_attributes', 'discard' ,'<?php echo $object['id']; ?>', '<?php echo $event['Event']['id']; ?>');"></span>
         <?php
         }
     ?>

@@ -63,7 +63,8 @@
         'Objects/object_value_field',
         array(
           'element' => $element,
-          'k' => $k
+          'k' => $k,
+          'action' => $action
         )
       );
     ?>
@@ -73,6 +74,16 @@
       echo $this->Form->input('Attribute.' . $k . '.to_ids', array(
         'type' => 'checkbox',
         'checked' => $element['to_ids'],
+        'label' => false,
+        'div' => false
+      ));
+    ?>
+  </td>
+  <td>
+    <?php
+      echo $this->Form->input('Attribute.' . $k . '.disable_correlation', array(
+        'type' => 'checkbox',
+        'checked' => $element['disable_correlation'],
         'label' => false,
         'div' => false
       ));
