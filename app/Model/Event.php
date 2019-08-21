@@ -255,6 +255,7 @@ class Event extends AppModel
         'info' => array(
             'valueNotEmpty' => array(
                 'rule' => array('valueNotEmpty'),
+                'required' => true
             ),
         ),
         'user_id' => array(
@@ -1111,6 +1112,8 @@ class Event extends AppModel
                 if (!$found) {
                     return 403;
                 }
+            } else if (empty($event['SharingGroup']['roaming'])) {
+                return 403;
             }
         }
         $serverModel = ClassRegistry::init('Server');
@@ -2894,6 +2897,9 @@ class Event extends AppModel
     public function sendAlertEmail($id, $senderUser, $oldpublish = null, $processId = null)
     {
         $event = $this->fetchEvent($senderUser, array('eventid' => $id, 'includeAllTags' => true));
+        if (empty($event)) {
+            throw new NotFoundException('Invalid Event.');
+        }
         $this->NotificationLog = ClassRegistry::init('NotificationLog');
         if (!$this->NotificationLog->check($event[0]['Event']['orgc_id'], 'publish')) {
             if ($processId) {
@@ -2902,9 +2908,6 @@ class Event extends AppModel
                 $this->Job->saveField('message', 'Mails blocked by org alert threshold.');
             }
             return true;
-        }
-        if (empty($event)) {
-            throw new MethodNotFoundException('Invalid Event.');
         }
         $userConditions = array('autoalert' => 1);
         $this->User = ClassRegistry::init('User');

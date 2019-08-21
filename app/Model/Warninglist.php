@@ -190,10 +190,9 @@ class Warninglist extends AppModel
     {
         $redis = $this->setupRedis();
         if ($redis !== false) {
-            $redis->del('misp:warninglist_entries_cache:');
-            foreach ($warninglistEntries as $entry) {
-                $redis->sAdd('misp:warninglist_entries_cache:' . $id, $entry);
-            }
+            $key = 'misp:warninglist_entries_cache:' . $id;
+            $redis->del($key);
+            $redis->sAddArray($key, $warninglistEntries);
             return true;
         }
         return false;
@@ -203,7 +202,7 @@ class Warninglist extends AppModel
     {
         $redis = $this->setupRedis();
         if ($redis !== false) {
-            if (!$redis->exists('misp:warninglist_cache') || $redis->sCard('misp:warninglist_cache') == 0) {
+            if ($redis->sCard('misp:warninglist_cache') === 0) {
                 if (!empty($conditions)) {
                     $warninglists = $this->find('all', array('contain' => array('WarninglistType'), 'conditions' => $conditions));
                 } else {
@@ -237,7 +236,7 @@ class Warninglist extends AppModel
     {
         $redis = $this->setupRedis();
         if ($redis !== false) {
-            if (!$redis->exists('misp:warninglist_entries_cache:' . $id) || $redis->sCard('misp:warninglist_entries_cache:' . $id) == 0) {
+            if ($redis->sCard('misp:warninglist_entries_cache:' . $id) === 0) {
                 $entries = $this->WarninglistEntry->find('list', array(
                         'recursive' => -1,
                         'conditions' => array('warninglist_id' => $id),
@@ -257,33 +256,6 @@ class Warninglist extends AppModel
         return $entries;
     }
 
-    private function filterCidrList($inputValues)
-    {
-        $outputValues = [];
-        foreach ($inputValues as $v) {
-            $parts = explode('/', $v, 2);
-            if (filter_var($parts[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
-                $maximumNetmask = 32;
-            } else if (filter_var($parts[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
-                $maximumNetmask = 128;
-            } else {
-                // IP address part of CIDR is invalid
-                continue;
-            }
-
-            if (!isset($parts[1])) {
-                // If CIDR doesnt contains '/', we will consider CIDR as /32 for IPv4 or /128 for IPv6
-                $v = "$v/$maximumNetmask";
-            } else if ($parts[1] > $maximumNetmask || $parts[1] < 0) {
-                // Netmask part of CIDR is invalid
-                continue;
-            }
-
-            $outputValues[] = $v;
-        }
-        return $outputValues;
-    }
-
     public function fetchForEventView()
     {
         $warninglists = $this->getWarninglists(array('enabled' => 1));
@@ -297,12 +269,10 @@ class Warninglist extends AppModel
                 foreach ($t['values'] as $vk => $v) {
                     $t['values'][$vk] = rtrim($v, '.');
                 }
-            } else if ($t['Warninglist']['type'] == 'string' || $t['Warninglist']['type'] == 'hostname') {
-                $t['values'] = array_combine($t['values'], $t['values']);
-            } else if ($t['Warninglist']['type'] === 'cidr') {
-                $t['values'] = $this->filterCidrList($t['values']);
             }
-
+            if ($t['Warninglist']['type'] == 'string' || $t['Warninglist']['type'] == 'hostname') {
+                $t['values'] = array_combine($t['values'], $t['values']);
+            }
             foreach ($t['WarninglistType'] as &$wt) {
                 $t['types'][] = $wt['type'];
             }
@@ -439,9 +409,10 @@ class Warninglist extends AppModel
         $ipv6cidrlist = array();
         // separate the CIDR list into IPv4 and IPv6
         foreach ($listValues as $lv) {
-            if (strpos($lv, '.') !== false) { // IPv4 address must contain dot
+            $base = substr($lv, 0, strpos($lv, '/'));
+            if (filter_var($base, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
                 $ipv4cidrlist[] = $lv;
-            } else {
+            } elseif (filter_var($base, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
                 $ipv6cidrlist[] = $lv;
             }
         }
