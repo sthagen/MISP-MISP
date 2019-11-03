@@ -100,7 +100,7 @@
                         'id' => 'multi-accept-button',
                         'title' => __('Accept selected Proposals'),
                         'class' => 'mass-proposal-select hidden',
-                        'fa-icon' => 'check-circl',
+                        'fa-icon' => 'check-circle',
                         'onClick' => 'multiSelectAction',
                         'onClickParams' => array($event['Event']['id'], 'acceptProposals')
                     ),
@@ -167,6 +167,15 @@
                         'onClick' => 'toggleBoolFilter',
                         'onClickParams' => array($urlHere, 'deleted'),
                         'requirement' => ($me['Role']['perm_sync'] || $event['Orgc']['id'] == $me['org_id'])
+                    ),
+                    array(
+                        'id' => 'show_attribute_decaying_score',
+                        'title' => __('Show attribute decaying score'),
+                        'fa-icon' => 'chart-line',
+                        'text' => __('Decay score'),
+                        'active' => $includeDecayScore,
+                        'onClick' => 'toggleBoolFilter',
+                        'onClickParams' => array($urlHere, 'includeDecayScore')
                     ),
                     array(
                         'id' => 'show_attribute_context',

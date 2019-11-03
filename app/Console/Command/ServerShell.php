@@ -6,6 +6,32 @@ class ServerShell extends AppShell
 {
     public $uses = array('Server', 'Task', 'Job', 'User', 'Feed');
 
+    public function list() {
+        $res = ['servers'=>[]];
+
+        $servers = $this->Server->find('all', [
+            'fields' => ['Server.id', 'Server.name', 'Server.url'],
+            'recursive' => 0
+        ]);
+        foreach ($servers as $server)
+            $res['servers'][] = $server['Server'];
+
+        echo json_encode($res) . PHP_EOL;
+    }
+
+    public function test() {
+        if (empty($this->args[0])) {
+            die('Usage: ' . $this->Server->command_line_functions['console_automation_tasks']['data']['Test'] . PHP_EOL);
+        }
+
+        $serverId = intval($this->args[0]);
+        $res = @$this->Server->runConnectionTest($serverId);
+        if (!empty($res['message']))
+            $res['message'] = json_decode($res['message']);
+
+        echo json_encode($res) . PHP_EOL;
+    }
+
     public function pull() {
         if (empty($this->args[0]) || empty($this->args[1])) {
             die('Usage: ' . $this->Server->command_line_functions['console_automation_tasks']['data']['pull'] . PHP_EOL);
@@ -253,13 +279,19 @@ class ServerShell extends AppShell
             $jobId = $this->Job->id;
         }
         $this->Job->read(null, $jobId);
-        $result = $this->Feed->cacheFeedInitiator($user, $jobId, $scope);
+        try {
+            $result = $this->Feed->cacheFeedInitiator($user, $jobId, $scope);
+        } catch (Exception $e) {
+            CakeLog::error($e->getMessage());
+            $result = false;
+        }
+
         $this->Job->id = $jobId;
         if ($result !== true) {
-            $message = 'Job Failed. Reason: ';
+            $message = 'Job failed. See logs for more details.';
             $this->Job->save(array(
                     'id' => $jobId,
-                    'message' => $message . $result,
+                    'message' => $message,
                     'progress' => 0,
                     'status' => 3
             ));
@@ -401,12 +433,26 @@ class ServerShell extends AppShell
         );
         $this->Job->save($data);
         $jobId = $this->Job->id;
-        $result = $this->Feed->cacheFeedInitiator($user, $jobId, 'all');
-        $this->Job->save(array(
-            'message' => 'Job done.',
-            'progress' => 100,
-            'status' => 4
-        ));
+        try {
+            $result = $this->Feed->cacheFeedInitiator($user, $jobId, 'all');
+        } catch (Exception $e) {
+            CakeLog::error($e->getMessage());
+            $result = false;
+        }
+        if ($result) {
+            $this->Job->save(array(
+                'message' => 'Job done.',
+                'progress' => 100,
+                'status' => 4
+            ));
+        } else {
+            $this->Job->save(array(
+                'message' => 'Job failed. See logs for more details.',
+                'progress' => 100,
+                'status' => 3,
+            ));
+        }
+
         $this->Task->id = $task['Task']['id'];
         $this->Task->saveField('message', 'Job completed at ' . date('d/m/Y - H:i:s'));
     }

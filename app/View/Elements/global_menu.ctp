@@ -43,6 +43,10 @@
                         'url' => '/events/proposalEventIndex'
                     ),
                     array(
+                        'url' => '/event_delegations/index/context:pending',
+                        'text' => __('View delegation requests')
+                    ),
+                    array(
                         'type' => 'separator'
                     ),
                     array(
@@ -144,6 +148,14 @@
                         'url' => '/users/view/me'
                     ),
                     array(
+                        'text' => __('My Settings'),
+                        'url' => '/user_settings/index/user_id:me'
+                    ),
+                    array(
+                        'text' => __('Set Setting'),
+                        'url' => '/user_settings/setSetting'
+                    ),
+                    array(
                         'text' => __('Dashboard'),
                         'url' => '/users/dashboard'
                     ),
@@ -174,6 +186,18 @@
                         'text' => __('Add Sharing Group'),
                         'url' => '/sharing_groups/add',
                         'requirement' => $isAclSharingGroup
+                    ),
+                    array(
+                        'type' => 'separator'
+                    ),
+                    array(
+                        'text' => __('Decaying Models Tool'),
+                        'url' => '/decayingModel/decayingTool',
+                        'requirement' => $isAdmin
+                    ),
+                    array(
+                        'text' => __('List Decaying Models'),
+                        'url' => '/decayingModel/index',
                     ),
                     array(
                         'type' => 'separator'
@@ -236,6 +260,11 @@
                         'text' => __('Search Feed Caches'),
                         'url' => '/feeds/searchCaches',
                         'requirement' => ($isSiteAdmin || $hostOrgUser)
+                    ),
+                    array(
+                        'text' => __('List Communities'),
+                        'url' => '/communities/index',
+                        'requirement' => ($isSiteAdmin)
                     )
                 )
             ),
@@ -248,6 +277,14 @@
                     array(
                         'text' => __('List Users'),
                         'url' => '/admin/users/index'
+                    ),
+                    array(
+                        'text' => __('List User Settings'),
+                        'url' => '/user_settings/index/user_id:all'
+                    ),
+                    array(
+                        'text' => __('Set User Setting'),
+                        'url' => '/user_settings/setSetting'
                     ),
                     array(
                         'text' => __('Add User'),
@@ -282,7 +319,6 @@
                     ),
                     array(
                         'type' => 'separator',
-                        'requirement' => $isSiteAdmin
                     ),
                     array(
                         'text' => __('Server Settings & Maintenance'),

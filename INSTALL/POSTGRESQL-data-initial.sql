@@ -118,7 +118,7 @@ COPY public.favourite_tags (id, tag_id, user_id) FROM stdin;
 
 COPY public.feeds (id, name, provider, url, rules, enabled, distribution, sharing_group_id, tag_id, "default", source_format, fixed_event, delta_merge, event_id, publish, override_ids, settings, input_source, delete_local_file, lookup_visible, headers, caching_enabled) FROM stdin;
 1	CIRCL OSINT Feed	CIRCL	https://www.circl.lu/doc/misp/feed-osint	\N	f	3	0	0	t	misp	f	f	0	f	f	\N	network	f	f	\N	f
-2	The Botvrij.eu Data	Botvrij.eu	http://www.botvrij.eu/data/feed-osint	\N	f	3	0	0	t	misp	f	f	0	f	f	\N	network	f	f	\N	f
+2	The Botvrij.eu Data	Botvrij.eu	https://www.botvrij.eu/data/feed-osint	\N	f	3	0	0	t	misp	f	f	0	f	f	\N	network	f	f	\N	f
 \.
 
 
@@ -309,13 +309,13 @@ COPY public.regexp (id, regexp, replacement, type) FROM stdin;
 -- Data for Name: roles; Type: TABLE DATA; Schema: public; Owner: -
 --
 
-COPY public.roles (id, name, created, modified, perm_add, perm_modify, perm_modify_org, perm_publish, perm_delegate, perm_sync, perm_admin, perm_audit, perm_full, perm_auth, perm_site_admin, perm_regexp_access, perm_tagger, perm_template, perm_sharing_group, perm_tag_editor, perm_sighting, perm_object_template, default_role, memory_limit, max_execution_time, restricted_to_site_admin, perm_publish_zmq, perm_publish_kafka) FROM stdin;
-1	admin	2018-11-27 06:22:00+00	2018-11-27 06:22:00+00	t	t	t	t	t	t	t	t	t	t	t	t	t	t	t	t	t	t	f			f	t	t
-2	Org Admin	2018-11-27 06:22:00+00	2018-11-27 06:22:00+00	t	t	t	t	t	f	t	t	f	t	f	f	t	t	t	t	t	f	f			f	t	t
-3	User	2018-11-27 06:22:00+00	2018-11-27 06:22:00+00	t	t	t	f	f	f	f	f	f	t	f	f	f	f	f	f	t	f	t			f	f	f
-4	Publisher	2018-11-27 06:22:00+00	2018-11-27 06:22:00+00	t	t	t	t	t	f	f	f	f	t	f	f	f	f	f	f	t	f	f			f	t	t
-5	Sync user	2018-11-27 06:22:00+00	2018-11-27 06:22:00+00	t	t	t	t	t	t	f	f	f	t	f	f	f	f	t	f	t	f	f			f	t	t
-6	Read Only	2018-11-27 06:22:00+00	2018-11-27 06:22:00+00	f	f	f	f	f	f	f	f	f	t	f	f	f	f	f	f	f	f	f			f	f	f
+COPY public.roles (id, name, created, modified, perm_add, perm_modify, perm_modify_org, perm_publish, perm_delegate, perm_sync, perm_admin, perm_audit, perm_full, perm_auth, perm_site_admin, perm_regexp_access, perm_tagger, perm_template, perm_sharing_group, perm_tag_editor, perm_sighting, perm_object_template, default_role, memory_limit, max_execution_time, restricted_to_site_admin, perm_publish_zmq, perm_publish_kafka, perm_decaying) FROM stdin;
+1	admin	2018-11-27 06:22:00+00	2018-11-27 06:22:00+00	t	t	t	t	t	t	t	t	t	t	t	t	t	t	t	t	t	t	f			f	t	t	t
+2	Org Admin	2018-11-27 06:22:00+00	2018-11-27 06:22:00+00	t	t	t	t	t	f	t	t	f	t	f	f	t	t	t	t	t	f	f			f	t	t	t
+3	User	2018-11-27 06:22:00+00	2018-11-27 06:22:00+00	t	t	t	f	f	f	f	f	f	t	f	f	f	f	f	f	t	f	t			f	f	f	t
+4	Publisher	2018-11-27 06:22:00+00	2018-11-27 06:22:00+00	t	t	t	t	t	f	f	f	f	t	f	f	f	f	f	f	t	f	f			f	t	t	t
+5	Sync user	2018-11-27 06:22:00+00	2018-11-27 06:22:00+00	t	t	t	t	t	t	f	f	f	t	f	f	f	f	t	f	t	f	f			f	t	t	t
+6	Read Only	2018-11-27 06:22:00+00	2018-11-27 06:22:00+00	f	f	f	f	f	f	f	f	f	t	f	f	f	f	f	f	f	f	f			f	f	f	f
 \.
 
 

@@ -38,21 +38,24 @@ class Taxonomy extends AppModel
     public function update()
     {
         $directories = glob(APP . 'files' . DS . 'taxonomies' . DS . '*', GLOB_ONLYDIR);
-        foreach ($directories as $k => $dir) {
-            $dir = str_replace(APP . 'files' . DS . 'taxonomies' . DS, '', $dir);
-            if ($dir === 'tools') {
-                unset($directories[$k]);
-            } else {
-                $directories[$k] = $dir;
-            }
-        }
         $updated = array();
         foreach ($directories as $dir) {
-            if (!file_exists(APP . 'files' . DS . 'taxonomies' . DS . $dir . DS . 'machinetag.json')) {
+            $dir = basename($dir);
+            if ($dir === 'tools') {
                 continue;
             }
+
             $file = new File(APP . 'files' . DS . 'taxonomies' . DS . $dir . DS . 'machinetag.json');
+            if (!$file->exists()) {
+                continue;
+            }
             $vocab = json_decode($file->read(), true);
+            $file->close();
+            if ($vocab === null) {
+                $updated['fails'][] = array('namespace' => $dir, 'fail' => "File machinetag.json is not valid JSON.");
+                continue;
+            }
+
             if (isset($vocab['type'])) {
                 if (is_array($vocab['type'])) {
                     if (!in_array('event', $vocab['type'])) {
@@ -64,7 +67,7 @@ class Taxonomy extends AppModel
                     }
                 }
             }
-            $file->close();
+
             if (!isset($vocab['version'])) {
                 $vocab['version'] = 1;
             }
@@ -342,21 +345,25 @@ class Taxonomy extends AppModel
             if (isset($entry['colour']) && !empty($entry['colour'])) {
                 $colour = $entry['colour'];
             }
+            $numerical_value = null;
+            if (isset($entry['numerical_value'])) {
+                $numerical_value = $entry['numerical_value'];
+            }
             if ($tagList) {
                 foreach ($tagList as $tagName) {
                     if ($tagName === $entry['tag']) {
                         if (isset($tags[strtoupper($entry['tag'])])) {
-                            $this->Tag->quickEdit($tags[strtoupper($entry['tag'])], $tagName, $colour, 0);
+                            $this->Tag->quickEdit($tags[strtoupper($entry['tag'])], $tagName, $colour, 0, $numerical_value);
                         } else {
-                            $this->Tag->quickAdd($tagName, $colour);
+                            $this->Tag->quickAdd($tagName, $colour, $numerical_value);
                         }
                     }
                 }
             } else {
                 if (isset($tags[strtoupper($entry['tag'])])) {
-                    $this->Tag->quickEdit($tags[strtoupper($entry['tag'])], $entry['tag'], $colour, 0);
+                    $this->Tag->quickEdit($tags[strtoupper($entry['tag'])], $entry['tag'], $colour, 0, $numerical_value);
                 } else {
-                    $this->Tag->quickAdd($entry['tag'], $colour);
+                    $this->Tag->quickAdd($entry['tag'], $colour, $numerical_value);
                 }
             }
         }
@@ -474,6 +481,9 @@ class Taxonomy extends AppModel
         ));
         $taxonomies = array();
         foreach ($temp as $t) {
+            if (isset($options['full']) && $options['full']) {
+                $t['Taxonomy']['TaxonomyPredicate'] = $t['TaxonomyPredicate'];
+            }
             $taxonomies[$t['Taxonomy']['namespace']] = $t['Taxonomy'];
         }
         return $taxonomies;

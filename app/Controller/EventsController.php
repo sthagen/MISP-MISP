@@ -26,7 +26,7 @@ class EventsController extends AppController
     );
 
     private $acceptedFilteringNamedParams = array('sort', 'direction', 'focus', 'extended', 'overrideLimit', 'filterColumnsOverwrite', 'attributeFilter', 'extended', 'page',
-        'searchFor', 'proposal', 'correlation', 'warning', 'deleted', 'includeRelatedTags', 'distribution', 'taggedAttributes', 'galaxyAttachedAttributes', 'objectType', 'attributeType', 'focus', 'extended', 'overrideLimit', 'filterColumnsOverwrite', 'feed', 'server', 'toIDS', 'sighting'
+        'searchFor', 'proposal', 'correlation', 'warning', 'deleted', 'includeRelatedTags', 'includeDecayScore', 'distribution', 'taggedAttributes', 'galaxyAttachedAttributes', 'objectType', 'attributeType', 'focus', 'extended', 'overrideLimit', 'filterColumnsOverwrite', 'feed', 'server', 'toIDS', 'sighting'
     );
 
     public $defaultFilteringRules =  array(
@@ -37,6 +37,7 @@ class EventsController extends AppController
         'warning' => 0,
         'deleted' => 2,
         'includeRelatedTags' => 0,
+        'includeDecayScore' => 0,
         'toIDS' => 0,
         'feed' => 0,
         'server' => 0,
@@ -730,6 +731,7 @@ class EventsController extends AppController
                 unset($rules['contain']);
                 $rules['recursive'] = -1;
                 $rules['fields'] = array('id', 'timestamp', 'published', 'uuid');
+                $rules['contain'] = array('Orgc.uuid');
             }
             $paginationRules = array('page', 'limit', 'sort', 'direction', 'order');
             foreach ($paginationRules as $paginationRule) {
@@ -835,6 +837,7 @@ class EventsController extends AppController
                 return $this->RestResponse->viewData($events, $this->response->type(), false, false, false, array('X-Result-Count' => $absolute_total));
             } else {
                 foreach ($events as $key => $event) {
+                    $event['Event']['orgc_uuid'] = $event['Orgc']['uuid'];
                     $events[$key] = $event['Event'];
                 }
                 return $this->RestResponse->viewData($events, $this->response->type(), false, false, false, array('X-Result-Count' => $absolute_total));
@@ -1076,6 +1079,13 @@ class EventsController extends AppController
         }
         if (isset($filters['deleted'])) {
             $conditions['deleted'] = $filters['deleted'] == 2 ? 0 : [0, 1];
+            if ($filters['deleted'] == 2) { // not-deleted only
+                $conditions['deleted'] = 0;
+            } elseif ($filters['deleted'] == 1) { // deleted only
+                $conditions['deleted'] = 1;
+            } else { // both
+                $conditions['deleted'] = [0, 1];
+            }
         }
         if (isset($filters['toIDS']) && $filters['toIDS'] != 0) {
             $conditions['to_ids'] = $filters['toIDS'] == 2 ? 0 : 1;
@@ -1096,6 +1106,12 @@ class EventsController extends AppController
             $conditions['includeRelatedTags'] = 1;
         } else {
             $this->set('includeRelatedTags', 0);
+        }
+        if (!empty($filters['includeDecayScore'])) {
+            $this->set('includeDecayScore', 1);
+            $conditions['includeDecayScore'] = 1;
+        } else {
+            $this->set('includeDecayScore', 0);
         }
 
         $results = $this->Event->fetchEvent($this->Auth->user(), $conditions);
@@ -1211,7 +1227,7 @@ class EventsController extends AppController
         }
         $deleted = 0;
         if (isset($filters['deleted'])) {
-            $deleted = $filters['deleted'] == 2 ? array(0, 1) : $filters['deleted'];
+            $deleted = $filters['deleted'] == 2 ? 0 : 1;
         }
         $this->set('deleted', $deleted);
         $this->set('typeGroups', array_keys($this->Event->Attribute->typeGroupings));
@@ -1528,12 +1544,19 @@ class EventsController extends AppController
         } else {
             $conditions['includeAttachments'] = true;
         }
+        $deleted = 0;
         if (isset($this->params['named']['deleted'])) {
+            $deleted = $this->params['named']['deleted'];
+        }
+        if (isset($this->request->data['deleted'])) {
+            $deleted = $this->request->data['deleted'];
+        }
+        if (isset($deleted)) {
             // workaround for old instances trying to pull events with both deleted / non deleted data
-            if (($this->userRole['perm_sync'] && $this->_isRest() && !$this->userRole['perm_site_admin']) && $this->params['named']['deleted'] == 1) {
+            if (($this->userRole['perm_sync'] && $this->_isRest() && !$this->userRole['perm_site_admin']) && $deleted == 1) {
                 $conditions['deleted'] = array(0,1);
             } else {
-                $conditions['deleted'] = $this->params['named']['deleted'] == 2 ? array(0,1) : $this->params['named']['deleted'];
+                $conditions['deleted'] = $deleted == 2 ? array(0,1) : $deleted;
             }
         }
         if (isset($this->params['named']['toIDS']) && $this->params['named']['toIDS'] != 0) {
@@ -1541,6 +1564,9 @@ class EventsController extends AppController
         }
         if (isset($this->params['named']['includeRelatedTags']) && $this->params['named']['includeRelatedTags']) {
             $conditions['includeRelatedTags'] = 1;
+        }
+        if (!empty($this->params['named']['includeDecayScore'])) {
+            $conditions['includeDecayScore'] = 1;
         }
         if (isset($this->params['named']['public']) && $this->params['named']['public']) {
             $conditions['distribution'] = array(3, 5);
@@ -1615,8 +1641,9 @@ class EventsController extends AppController
         if ($this->_isRest()) {
             $this->set('event', $event);
         }
-        $this->set('deleted', isset($this->params['named']['deleted']) ? ($this->params['named']['deleted'] == 2 ? 0 : 1) : 0);
+        $this->set('deleted', isset($deleted) ? ($deleted == 2 ? 0 : 1) : 0);
         $this->set('includeRelatedTags', (!empty($this->params['named']['includeRelatedTags'])) ? 1 : 0);
+        $this->set('includeDecayScore', (!empty($this->params['named']['includeDecayScore'])) ? 1 : 0);
         if (!$this->_isRest()) {
             if ($this->_isSiteAdmin() && $results[0]['Event']['orgc_id'] !== $this->Auth->user('org_id')) {
                 $this->Flash->info(__('You are currently logged in as a site administrator and editing an event not belonging to your organisation, which goes against the sharing model of MISP. Please only use this as a last resort and use normal user account for day to day work.'));
@@ -1760,11 +1787,12 @@ class EventsController extends AppController
         $advancedFilteringActive = array_diff_key($filters, array('sort'=>0, 'direction'=>0, 'focus'=>0, 'extended'=>0, 'overrideLimit'=>0, 'filterColumnsOverwrite'=>0, 'attributeFilter'=>0, 'extended' => 0, 'page' => 0));
 
         if (count($advancedFilteringActive) > 0) {
-            if (count(array_diff_key($advancedFilteringActive, array('deleted', 'includeRelatedTags'))) > 0) {
+            if (count(array_diff_key($advancedFilteringActive, array('deleted', 'includeRelatedTags', 'includeDecayScore'))) > 0) {
                 $res =  true;
             } else if (
-                (isset($advancedFilteringActive['deleted']) && $advancedFilteringActive['deleted'] == 2)
-                || (isset($advancedFilteringActive['includeRelatedTags']) && $advancedFilteringActive['includeRelatedTags'] == 2)
+                (isset($advancedFilteringActive['deleted']) && $advancedFilteringActive['deleted'] == 2) ||
+                (isset($advancedFilteringActive['includeRelatedTags']) && $advancedFilteringActive['includeRelatedTags'] == 1) ||
+                (isset($advancedFilteringActive['includeDecayScore']) && $advancedFilteringActive['includeDecayScore'] == 1)
             ) {
                 $res =  true;
             } else {
@@ -2052,7 +2080,13 @@ class EventsController extends AppController
                 $tempFile = new File($tmpDir . DS . $randomFileName, true, 0644);
                 $tempFile->write($this->request->input());
                 $tempFile->close();
-                $result = $this->Event->upload_stix($this->Auth->user(), $randomFileName, $stix_version, $original_file);
+                $result = $this->Event->upload_stix(
+                    $this->Auth->user(),
+                    $randomFileName,
+                    $stix_version,
+                    $original_file,
+                    $this->data['Event']['publish']
+                );
                 if (is_array($result)) {
                     return $this->RestResponse->saveSuccessResponse('Events', 'upload_stix', false, $this->response->type(), 'STIX document imported, event\'s created: ' . implode(', ', $result) . '.');
                 } elseif (is_numeric($result)) {
@@ -2070,7 +2104,13 @@ class EventsController extends AppController
                     $randomFileName = $this->Event->generateRandomFileName();
                     $tmpDir = APP . "files" . DS . "scripts" . DS . "tmp";
                     move_uploaded_file($this->data['Event']['stix']['tmp_name'], $tmpDir . DS . $randomFileName);
-                    $result = $this->Event->upload_stix($this->Auth->user(), $randomFileName, $stix_version, $original_file);
+                    $result = $this->Event->upload_stix(
+                        $this->Auth->user(),
+                        $randomFileName,
+                        $stix_version,
+                        $original_file,
+                        $this->data['Event']['publish']
+                    );
                     if (is_array($result)) {
                         $this->Flash->success(__('STIX document imported, event\'s created: ' . implode(', ', $result) . '.'));
                         $this->redirect(array('action' => 'index'));
@@ -2320,8 +2360,6 @@ class EventsController extends AppController
                 throw new NotFoundException(__('Invalid event'));
             }
             $id = $temp['Event']['id'];
-        } elseif (!is_numeric($id)) {
-            throw new NotFoundException(__('Invalid event'));
         }
         if ($this->request->is('post') || $this->request->is('put') || $this->request->is('delete')) {
             if (isset($this->request->data['id'])) {
@@ -2625,24 +2663,55 @@ class EventsController extends AppController
     // Users with a GnuPG key will get the mail encrypted, other users will get the mail unencrypted
     public function contact($id = null)
     {
+        $id = $this->Toolbox->findIdByUuid($this->Event, $id);
         $this->Event->id = $id;
         if (!$this->Event->exists()) {
             throw new NotFoundException(__('Invalid event'));
         }
         // User has filled in his contact form, send out the email.
         if ($this->request->is('post') || $this->request->is('put')) {
+            if (!isset($this->request->data['Event'])) {
+                $this->request->data = array('Event' => $this->request->data);
+            }
             $message = $this->request->data['Event']['message'];
-            $creator_only = $this->request->data['Event']['person'];
+            if (empty($message)) {
+                $error = __("You must specify a message.");
+                if ($this->_isRest()) {
+                    throw new MethodNotAllowedException($error);
+                } else {
+                    $this->Flash->error($error);
+                    $this->redirect(array('action' => 'contact', $id));
+                }
+            }
+
+            $creator_only = false;
+            if (isset($this->request->data['Event']['person'])) {
+                $creator_only = $this->request->data['Event']['person'];
+            }
             $user = $this->Auth->user();
             $user['gpgkey'] = $this->Event->User->getPGP($user['id']);
             $user['certif_public'] = $this->Event->User->getCertificate($user['id']);
-            if ($this->Event->sendContactEmailRouter($id, $message, $creator_only, $user, $this->_isSiteAdmin())) {
-                // redirect to the view event page
-                $this->Flash->success(__('Email sent to the reporter.', true));
+
+            $success = $this->Event->sendContactEmailRouter($id, $message, $creator_only, $user, $this->_isSiteAdmin());
+            if ($success) {
+                $return_message = __('Email sent to the reporter.');
+                if ($this->_isRest()) {
+                    return $this->RestResponse->saveSuccessResponse('Events', 'contact', $id, $this->response->type(), $return_message);
+                } else {
+                    $this->Flash->success($return_message);
+                    // redirect to the view event page
+                    $this->redirect(array('action' => 'view', $id));
+                }
             } else {
-                $this->Flash->error(__('Sending of email failed', true), 'default', array(), 'error');
+                $return_message = __('Sending of email failed.');
+                if ($this->_isRest()) {
+                    return $this->RestResponse->saveFailResponse('Events', 'contact', $id, $return_message, $this->response->type());
+                } else {
+                    $this->Flash->error($return_message, 'default', array(), 'error');
+                    // redirect to the view event page
+                    $this->redirect(array('action' => 'view', $id));
+                }
             }
-            $this->redirect(array('action' => 'view', $id));
         }
         // User didn't see the contact form yet. Present it to him.
         if (empty($this->data)) {
@@ -3387,7 +3456,18 @@ class EventsController extends AppController
             $this->render('/Events/module_views/' . $renderView);
         } else {
             $responseType = $this->Event->validFormats[$returnFormat][0];
-            return $this->RestResponse->viewData($final, $responseType, false, true, false, array('X-Result-Count' => $elementCounter, 'X-Export-Module-Used' => $returnFormat, 'X-Response-Format' => $responseType));
+            $filename = 'misp.event.';
+            if (!empty($filters['eventid']) && !is_array($filters['eventid'])) {
+                if (Validation::uuid(trim($filters['eventid']))) {
+                    $filename .= trim($filters['eventid']);
+                } else if (!empty(intval(trim($filters['eventid'])))) {
+                    $filename .= intval(trim($filters['eventid']));
+                }
+            } else {
+                $filename .= 'list';
+            }
+            $filename .= '.' . $responseType;
+            return $this->RestResponse->viewData($final, $responseType, false, true, $filename, array('X-Result-Count' => $elementCounter, 'X-Export-Module-Used' => $returnFormat, 'X-Response-Format' => $responseType));
         }
 
     }
@@ -4376,12 +4456,12 @@ class EventsController extends AppController
                     'checkbox_set' => '/events/restSearch/stix/eventid:' . $id . '/withAttachments:1'
             ),
             'stix_json' => array(
-                    'url' => '/events/restSearch/stix/eventid:' . $id . '.json',
+                    'url' => '/events/restSearch/stix-json/eventid:' . $id,
                     'text' => 'STIX JSON (metadata + all attributes)',
                     'requiresPublished' => false,
                     'checkbox' => true,
                     'checkbox_text' => 'Encode Attachments',
-                    'checkbox_set' => '/events/restSearch/stix/withAttachments:1/eventid:' . $id . '.json'
+                    'checkbox_set' => '/events/restSearch/stix-json/withAttachments:1/eventid:' . $id
             ),
             'stix2_json' => array(
                     'url' => '/events/restSearch/stix2/eventid:' . $id,
@@ -5373,6 +5453,9 @@ class EventsController extends AppController
             if ($moduleName === 'csvimport') {
                 if (empty($this->request->data['Event']['config']['header']) && $this->request->data['Event']['config']['has_header'] === '1') {
                     $this->request->data['Event']['config']['header'] = ' ';
+                }
+                if (empty($this->request->data['Event']['config']['special_delimiter'])) {
+                    $this->request->data['Event']['config']['special_delimiter'] = ' ';
                 }
             }
             foreach ($module['mispattributes']['userConfig'] as $configName => $config) {

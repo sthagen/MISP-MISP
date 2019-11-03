@@ -182,7 +182,7 @@ generateInstaller () {
 # Simple debug function with message
 
 # Make sure no alias exists
-if [[ $(type -t debug) == "alias" ]]; then unalias debug; fi
+[[ $(type -t debug) == "alias" ]] && unalias debug
 debug () {
   echo -e "${RED}Next step:${NC} ${GREEN}$1${NC}" > /dev/tty
   if [ ! -z $DEBUG ]; then
@@ -678,6 +678,7 @@ x86_64-debian-stretch
 x86_64-debian-buster
 x86_64-ubuntu-bionic
 x86_64-kali-2019.2
+x86_64-kali-2019.3
 armv6l-raspbian-stretch
 armv7l-raspbian-stretch
 armv7l-debian-jessie

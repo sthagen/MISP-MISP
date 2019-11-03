@@ -57,12 +57,21 @@ function fetchAddSightingForm(type, attribute_id, page, onvalue) {
 }
 
 function flexibleAddSighting(clicked, type, attribute_id, event_id, value, page, placement) {
-    $clicked = $(clicked);
-    var html = '<div>'
-        + '<button class="btn btn-primary" onclick="addSighting(\'' + type + '\', \'' + attribute_id + '\', \'' + event_id + '\', \'' + page + '\')">This attribute</button>'
-        + '<button class="btn btn-primary" style="margin-left:5px;" onclick="fetchAddSightingForm(\'' + type + '\', \'' + attribute_id + '\', \'' + page + '\', true)">Global value</button>'
-        + '</div>';
-    openPopover(clicked, html, true, placement);
+    var $clicked = $(clicked);
+    var hoverbroken = false;
+    $clicked.off('mouseleave.temp').on('mouseleave.temp', function() {
+        hoverbroken = true;
+    });
+    setTimeout(function() {
+        $clicked.off('mouseleave.temp');
+        if ($clicked.is(":hover") && !hoverbroken) {
+            var html = '<div>'
+                + '<button class="btn btn-primary" onclick="addSighting(\'' + type + '\', \'' + attribute_id + '\', \'' + event_id + '\', \'' + page + '\')">This attribute</button>'
+                + '<button class="btn btn-primary" style="margin-left:5px;" onclick="fetchAddSightingForm(\'' + type + '\', \'' + attribute_id + '\', \'' + page + '\', true)">Global value</button>'
+                + '</div>';
+            openPopover(clicked, html, true, placement);
+        }
+    }, 1000);
 }
 
 function publishPopup(id, type) {
@@ -1177,6 +1186,7 @@ function submitPopoverForm(context_id, referer, update_context_id) {
             break;
     }
     if (url !== null) {
+        url = baseurl + url;
         $.ajax({
             beforeSend: function (XMLHttpRequest) {
                 $(".loading").show();
@@ -1202,10 +1212,15 @@ function submitPopoverForm(context_id, referer, update_context_id) {
                     $('#sightingsListAllToggle').addClass('btn-primary');
                 }
                 if (context == 'event' && (referer == 'add' || referer == 'massEdit' || referer == 'replaceAttributes' || referer == 'addObjectReference')) eventUnpublish();
+            },
+            error: function (jqXHR, textStatus, errorThrown) {
+                showMessage('fail', textStatus + ": " + errorThrown);
+            },
+            complete: function () {
                 $(".loading").hide();
             },
-            type:"post",
-            url:url
+            type: "post",
+            url: url,
         });
     }
 
@@ -1492,7 +1507,7 @@ function templateElementFileCategoryChange(category) {
     }
 }
 
-function openPopup(id, adjust_layout) {
+function openPopup(id, adjust_layout, callback) {
     adjust_layout = adjust_layout === undefined ? true : adjust_layout;
     if (adjust_layout) {
         var window_height = $(window).height();
@@ -1511,10 +1526,14 @@ function openPopup(id, adjust_layout) {
         }
     }
     $("#gray_out").fadeIn();
-    $(id).fadeIn();
+    $(id).fadeIn(400, function() {
+        if (callback !== undefined) {
+            callback();
+        }
+    });
 }
 
-function openPopover(clicked, data, hover, placement) {
+function openPopover(clicked, data, hover, placement, callback) {
     hover = hover === undefined ? false : hover;
     placement = placement === undefined ? 'right' : placement;
     /* popup handling */
@@ -1522,7 +1541,7 @@ function openPopover(clicked, data, hover, placement) {
     var randomId = $clicked.attr('data-dismissid') !== undefined ? $clicked.attr('data-dismissid') : Math.random().toString(36).substr(2,9); // used to recover the button that triggered the popover (so that we can destroy the popover)
     var loadingHtml = '<div style="height: 75px; width: 75px;"><div class="spinner"></div><div class="loadingText">Loading</div></div>';
     $clicked.attr('data-dismissid', randomId);
-    var closeButtonHtml = '<button type="button" class="close" style="margin-left: 5px;" onclick="$(&apos;[data-dismissid=&quot;' + randomId + '&quot;]&apos;).popover(\'destroy\');">×</button>';
+    var closeButtonHtml = '<button type="button" class="close" style="margin-left: 5px;" onclick="$(&apos;[data-dismissid=&quot;' + randomId + '&quot;]&apos;).popover(\'hide\');">×</button>';
 
     if (!$clicked.data('popover')) {
         $clicked.addClass('have-a-popover');
@@ -1549,6 +1568,9 @@ function openPopover(clicked, data, hover, placement) {
             }
             var popoverTitle = popover.find('h3.popover-title');
             popoverTitle.html(title + closeButtonHtml);
+            if (callback !== undefined) {
+                callback(popover);
+            }
         })
         .on('keydown.volatilePopover', function(e) {
             if(e.keyCode == 27) { // ESC
@@ -1619,10 +1641,14 @@ function getPopup(id, context, target, admin, popupType) {
             $(popupType).html(data);
             openPopup(popupType, false);
         },
-        error:function() {
+        error:function(xhr) {
             $(".loading").hide();
             $("#gray_out").fadeOut();
-            showMessage('fail', 'Something went wrong - the queried function returned an exception. Contact your administrator for further details (the exception has been logged).');
+            if (xhr.status === 403) {
+                showMessage('fail', 'Not allowed.');
+            } else {
+                showMessage('fail', 'Something went wrong - the queried function returned an exception. Contact your administrator for further details (the exception has been logged).');
+            }
         },
         url: url
     });
@@ -1737,6 +1763,26 @@ function choicePopup(legend, list) {
 
     $("#popover_form").html(popupHtml);
     openPopup("#popover_form");
+}
+
+function openModal(heading, body, footer, modal_option, css_container, css_body) {
+    var modal_id = 'dynamic_modal_' + new Date().getTime();
+    var modal_html = '<div id="' + modal_id + '" class="modal hide fade" style="' + (css_container !== undefined ? css_container : '') + '" tabindex="-1" role="dialog" aria-hidden="true">';
+    if (heading !== undefined && heading !== '') {
+        modal_html += '<div class="modal-header">'
+                        + '<button type="button" class="close" data-dismiss="modal" aria-hidden="true">×</button>'
+                        + '<h3 id="myModalLabel">' + heading + '</h3>'
+                    + '</div>';
+    }
+    if (body !== undefined && body !== '') {
+        modal_html += '<div class="modal-body" style="' + (css_body !== undefined ? css_body : '') + '">' + body + '</div>';
+    }
+    if (footer !== undefined && footer !== '') {
+        modal_html += '<div class="modal-footer">' + footer + '</div>';
+    }
+    modal_html += '</div>';
+    $('body').append($(modal_html));
+    $('#'+modal_id).modal(modal_option !== undefined ? modal_option : {});
 }
 
 function resizePopoverBody() {
@@ -2766,7 +2812,7 @@ function sharingGroupPopulateOrganisations() {
         if (org.removable == 1) {
             html += '<input id="orgExtend' + id + '" type="checkbox" onClick="sharingGroupExtendOrg(' + id + ')" ';
             if (org.extend) html+= 'checked';
-            html += '></input>';
+            html += '>';
         } else {
             html += '<span class="icon-ok"></span>'
         }
@@ -2791,7 +2837,7 @@ function sharingGroupPopulateServers() {
         html += '<td>';
         html += '<input id="serverAddOrgs' + id + '" type="checkbox" onClick="sharingGroupServerAddOrgs(' + id + ')" ';
         if (server.all_orgs) html += 'checked';
-        html += '></input>';
+        html += '>';
         html +='</td>';
         html += '<td class="actions short">';
         if (server.removable == 1) html += '<span class="icon-trash" onClick="sharingGroupRemoveServer(' + id + ')"></span>';
@@ -3043,6 +3089,19 @@ function testConnection(id) {
             }
         }
     })
+}
+
+function getTextColour(hex) {
+    hex = hex.slice(1);
+    var r = parseInt(hex.substring(0,2), 16);
+    var g = parseInt(hex.substring(2,4), 16);
+    var b = parseInt(hex.substring(4,6), 16);
+    var avg = ((2 * r) + b + (3 * g))/6;
+    if (avg < 128) {
+        return 'white';
+    } else {
+        return 'black';
+    }
 }
 
 function pgpChoiceSelect(uri) {
@@ -3303,11 +3362,18 @@ function toggleBoolFilter(url, param) {
             url = url.replace(re, '');
         }
     });
-
-    if (res[param] !== undefined) { // allow toggle for `deleted`.
-        res[param] = res[param] == '0' ? '2' : '0';
+    if (res[param] !== undefined) {
+        if (param == 'deleted') {
+            res[param] = res[param] == 0 ? 2 : 0;
+        } else {
+            res[param] = res[param] == 0 ? 1 : 0;
+        }
     } else {
-        res[param] = '0';
+        if (param == 'deleted') {
+            res[param] = 0;
+        } else {
+            res[param] = 1;
+        }
     }
 
     url += buildFilterURL(res);
@@ -3487,8 +3553,10 @@ function attributeHoverPlacement(element) {
 $('body').on('click', function (e) {
   $('[data-toggle=popover]').each(function () {
     // hide any open popovers when the anywhere else in the body is clicked
-    if (!$(this).is(e.target) && $(this).has(e.target).length === 0 && $('.popover').has(e.target).length === 0) {
-      $('#' + currentPopover).popover('destroy');
+    if (typeof currentPopover !== 'undefined') {
+        if (!$(this).is(e.target) && $(this).has(e.target).length === 0 && $('.popover').has(e.target).length === 0) {
+          $('#' + currentPopover).popover('destroy');
+        }
     }
   });
 });
@@ -3679,28 +3747,6 @@ function loadTagTreemap() {
     });
 }
 
-function loadSightingsData(timestamp) {
-    url = "/sightings/toplist";
-    if (timestamp != undefined) {
-        url = url + '/' + timestamp;
-    }
-    $.ajax({
-        async:true,
-        beforeSend: function (XMLHttpRequest) {
-            $(".loading").show();
-        },
-        success:function (data, textStatus) {
-            $(".sightingsdiv").html(data);
-        },
-        complete:function() {
-            $(".loading").hide();
-        },
-        type:"get",
-        cache: false,
-        url: url,
-    });
-}
-
 function quickEditEvent(id, field) {
     $.ajax({
         async:true,
@@ -3728,7 +3774,7 @@ function selectAllInbetween(last, current) {
         from = to;
         to = temp;
     }
-    $('.select_proposal, .select_attribute').each(function () {
+    $('.select_proposal, .select_attribute, .select').each(function (e) {
         if ($('#' + this.id).parent().parent().index() >= from && $('#' + this.id).parent().parent().index() <= to) {
             $(this).prop('checked', true);
         }
@@ -4226,8 +4272,6 @@ function checkIfLoggedIn() {
             if (data.slice(-2) !== 'OK') {
                 window.location.replace(baseurl + "/users/login");
             }
-        }).fail(function() {
-                window.location.replace(baseurl + "/users/login");
         });
     }
     setTimeout(function() { checkIfLoggedIn(); }, 5000);
@@ -4244,7 +4288,7 @@ function insertHTMLRestResponse() {
 }
 
 function insertJSONRestResponse() {
-    $('#rest-response-container').append('<p id="json-response-container" style="border: 1px solid blue; padding:5px;" />');
+    $('#rest-response-container').append('<p id="json-response-container" style="border: 1px solid blue; padding:5px; overflow-wrap: break-word;" />');
     var parsedJson = syntaxHighlightJson($('#rest-response-hidden-container').text());
     $('#json-response-container').html(parsedJson);
 }
@@ -4256,7 +4300,7 @@ function syntaxHighlightJson(json, indent) {
     if (typeof json == 'string') {
         json = JSON.parse(json);
     }
-    json = JSON.stringify(json, undefined, 2);
+    json = JSON.stringify(json, undefined, indent);
     json = json.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/(?:\r\n|\r|\n)/g, '<br>').replace(/ /g, '&nbsp;');
     return json.replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?)/g, function (match) {
             var cls = 'json_number';
@@ -4273,6 +4317,42 @@ function syntaxHighlightJson(json, indent) {
             }
             return '<span class="' + cls + '">' + match + '</span>';
     });
+}
+
+function jsonToNestedTable(json, header, table_classes) {
+    if (typeof json == 'string') {
+        json = JSON.parse(json);
+    }
+    if (Object.keys(json).length == 0) {
+        return '';
+    }
+    header = header === undefined ? [] : header;
+    table_classes = table_classes === undefined ? [] : table_classes;
+    var $table = $('<table></table>');
+    table_classes.forEach(function(classname) {
+        $table.addClass(classname);
+    });
+    if (header.length > 0) {
+        var $header = $('<thead><tr></tr></thead>');
+        header.forEach(function(col) {
+            $header.child().append($('<td></td>').text(col));
+        });
+        $table.append($header);
+    }
+    var $body = $('<tbody></tbody>');
+    Object.keys(json).forEach(function(k) {
+        var value = json[k];
+        if (typeof value === 'object') {
+            value = JSON.stringify(value);
+        }
+        $body.append(
+            $('<tr></tr>')
+                .append($('<td></td>').text(k))
+                .append($('<td></td>').text(value))
+        );
+    });
+    $table.append($body);
+    return $table[0].outerHTML;
 }
 
 function liveFilter() {
@@ -4409,6 +4489,37 @@ function fetchFormDataAjax(url, callback) {
         cache: false,
         url: url
     });
+}
+
+function moveIndexRow(id, direction, endpoint) {
+    var row = $('#row_' + id);
+    $.ajax({
+        url: baseurl + endpoint + '/' + id + '/' + direction,
+        type: 'GET',
+        success: function(data) {
+            if (direction === 'up') {
+                if (row.prev().length) {
+                    row.insertBefore(row.prev());
+                }
+            } else {
+                if (row.next().length) {
+                    row.insertAfter(row.next());
+                }
+            }
+            handleGenericAjaxResponse({'saved':true, 'success':['Server priority changed.']});
+        },
+        error: function(data) {
+            handleGenericAjaxResponse({'saved':false, 'errors':['Something went wrong, could not change the priority as requested.']});
+        }
+    });
+}
+
+function checkRoleEnforceRateLimit() {
+    if ($("#RoleEnforceRateLimit").is(':checked')) {
+        $('#rateLimitCountContainer').show();
+    } else {
+        $('#rateLimitCountContainer').hide();
+    }
 }
 
 (function(){

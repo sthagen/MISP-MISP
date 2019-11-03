@@ -141,14 +141,14 @@ $config = array(
 	/*
 	'ApacheSecureAuth' => // Configuration for kerberos authentication
 		array(
-			'apacheEnv'          => 'REMOTE_USER',           // If proxy variable = HTTP_REMOTE_USER
+			'apacheEnv'          => 'REMOTE_USER',           // If proxy variable = HTTP_REMOTE_USER, If BasicAuth ldap = PHP_AUTH_USER
 			'ldapServer'         => 'ldap://example.com',   // FQDN or IP
 			'ldapProtocol'       => 3,
 			'ldapNetworkTimeout' => -1,  // use -1 for unlimited network timeout
 			'ldapReaderUser'     => 'cn=userWithReadAccess,ou=users,dc=example,dc=com', // DN ou RDN LDAP with reader user right
 			'ldapReaderPassword' => 'UserPassword', // the LDAP reader user password
 			'ldapDN'             => 'dc=example,dc=com',
-			'ldapSearchFilter'   => '', // Search filter to limit results from ldapsearh fx to specfic group. FX
+			'ldapSearchFilter'   => '', // Search filter to limit results from ldapsearh fx to specific group. FX
 	 		//'ldapSearchFilter'   => '(objectclass=InetOrgPerson)(!(nsaccountlock=True))(memberOf=cn=misp,cn=groups,cn=accounts,dc=example,dc=com)',
 			'ldapSearchAttribut' => 'uid',          // filter for search
 			'ldapFilter'         => array(

@@ -80,18 +80,10 @@ class AttributesController extends AppController
             return $this->RestResponse->viewData($attributes, $this->response->type());
         }
         $org_ids = array();
-        $tag_ids = array();
         $orgs = $this->Attribute->Event->Orgc->find('list', array(
                 'conditions' => array('Orgc.id' => $org_ids),
                 'fields' => array('Orgc.id', 'Orgc.name')
         ));
-        if (!empty($tag_ids)) {
-            $tags = $this->Attribute->AttributeTag->Tag->find('all', array(
-                'conditions' => array('Tag.id' => $tag_ids),
-                'recursive' => -1,
-                'fields' => array('Tag.id', 'Tag.name', 'Tag.colour')
-            ));
-        }
         if (!$this->_isRest()) {
             $temp = $this->__searchUI($attributes);
             $this->loadModel('Galaxy');
@@ -1219,6 +1211,12 @@ class AttributesController extends AppController
         } elseif (!is_numeric($id)) {
             throw new NotFoundException('Invalid attribute');
         }
+        if (isset($this->params['named']['hard'])) {
+            $hard = $this->params['named']['hard'];
+        }
+        if (isset($this->request->data['hard'])) {
+            $hard = $this->request->data['hard'];
+        }
         $this->set('id', $id);
         $conditions = array('id' => $id);
         if (!$hard) {
@@ -1245,8 +1243,8 @@ class AttributesController extends AppController
                 $this->render('ajax/attributeConfirmationForm');
             }
         } else {
-            if (!$this->request->is('post') && !$this->_isRest()) {
-                throw new MethodNotAllowedException();
+            if (!$this->request->is('post') && !$this->request->is('delete')) {
+                throw new MethodNotAllowedException(__('This function is only accessible via POST requests.'));
             }
             if ($this->Attribute->deleteAttribute($id, $this->Auth->user(), $hard)) {
                 if ($this->_isRest() || $this->response->type() === 'application/json') {
@@ -1639,25 +1637,6 @@ class AttributesController extends AppController
         }
     }
 
-    // Deletes this specific attribute from all remote servers
-    private function __deleteAttributeFromServers($uuid)
-    {
-        // get a list of the servers with push active
-        $this->loadModel('Server');
-        $servers = $this->Server->find('all', array('conditions' => array('push' => 1)));
-
-        // iterate over the servers and upload the attribute
-        if (empty($servers)) {
-            return;
-        }
-        App::uses('SyncTool', 'Tools');
-        foreach ($servers as $server) {
-            $syncTool = new SyncTool();
-            $HttpSocket = $syncTool->setupHttpSocket($server);
-            $this->Attribute->deleteAttributeFromServer($uuid, $server, $HttpSocket);
-        }
-    }
-
     public function search($continue = false)
     {
         $this->set('attrDescriptions', $this->Attribute->fieldDescriptions);
@@ -1891,7 +1870,8 @@ class AttributesController extends AppController
             'value' , 'type', 'category', 'org', 'tags', 'from', 'to', 'last', 'eventid', 'withAttachments', 'uuid', 'publish_timestamp',
             'timestamp', 'enforceWarninglist', 'to_ids', 'deleted', 'includeEventUuid', 'event_timestamp', 'threat_level_id', 'includeEventTags',
             'includeProposals', 'returnFormat', 'published', 'limit', 'page', 'requested_attributes', 'includeContext', 'headerless',
-            'includeWarninglistHits', 'attackGalaxy', 'object_relation', 'includeSightings', 'includeCorrelations'
+            'includeWarninglistHits', 'attackGalaxy', 'object_relation', 'includeSightings', 'includeCorrelations', 'includeDecayScore',
+            'decayingModel', 'excludeDecayed', 'modelOverrides', 'includeFullModel', 'score'
         );
         $filterData = array(
             'request' => $this->request,
@@ -2901,8 +2881,8 @@ class AttributesController extends AppController
             if (isset($result['results']['Attribute'])) {
                 if (!empty($result['results']['Attribute'])) {
                     $attributes = array();
-                    foreach($result['results']['Attribute'] as $attribute) {
-                        array_push($attributes, array('type' => $attribute['type'], 'value' => $attribute['value']));
+                    foreach($result['results']['Attribute'] as $result_attribute) {
+                        $attributes[] = array('type' => $result_attribute['type'], 'value' => $result_attribute['value']);
                     }
                     $current_result['Attribute'] = $attributes;
                 }
@@ -2989,9 +2969,15 @@ class AttributesController extends AppController
         $RearrangeTool = new RequestRearrangeTool();
         $this->request->data = $RearrangeTool->rearrangeArray($this->request->data, $rearrangeRules);
         if ($id === false) {
+            if (!isset($this->request->data['attribute'])) {
+                throw new NotFoundException(__('Invalid attribute'));
+            }
             $id = $this->request->data['attribute'];
         }
         if ($id === 'selected') {
+            if (!isset($this->request->data['attribute_ids'])) {
+                throw new NotFoundException(__('Invalid attribute'));
+            }
             $idList = json_decode($this->request->data['attribute_ids'], true);
         }
         $local = empty($this->params['named']['local']) ? 0 : 1;
@@ -3004,6 +2990,9 @@ class AttributesController extends AppController
             $this->render('/Events/add_tag');
         } else {
             if ($tag_id === false) {
+                if (!isset($this->request->data['tag'])) {
+                    throw new NotFoundException(__('Invalid tag'));
+                }
                 $tag_id = $this->request->data['tag'];
             }
             if (!is_numeric($tag_id)) {
@@ -3056,13 +3045,22 @@ class AttributesController extends AppController
             $success = 0;
             $fails = 0;
             foreach ($idList as $id) {
-                $attribute = $this->Attribute->find('first', array(
-                    'recursive' => -1,
-                    'conditions' => array('Attribute.id' => $id, 'Attribute.deleted' => 0),
-                    'contain' => array('Event.orgc_id')
-                ));
-                if (empty($attribute)) {
+                $attributes = $this->Attribute->fetchAttributes(
+                    $this->Auth->user(),
+                    array(
+                        'conditions' => array('Attribute.id' => $id, 'Attribute.deleted' => 0),
+                        'flatten' => 1,
+                        'contain' => array('Event.orgc_id')
+                    )
+                );
+                if (empty($attributes)) {
                     throw new NotFoundException(__('Invalid attribute'));
+                } else {
+                    $attribute = $attributes[0];
+                }
+                if (!$this->userRole['perm_tagger']) {
+                    $fails++;
+                    continue;
                 }
                 if ((!$this->userRole['perm_sync'] && !$this->_isSiteAdmin()) && $attribute['Event']['orgc_id'] !== $this->Auth->user('org_id')) {
                     if (Configure::read('MISP.host_org_id') != $this->Auth->user('org_id') || !$local) {
@@ -3075,11 +3073,6 @@ class AttributesController extends AppController
                     'conditions' => array('Event.id' => $eventId),
                     'recursive' => -1
                 ));
-                if (!$this->_isSiteAdmin() && !$this->userRole['perm_sync']) {
-                    if (!$this->userRole['perm_tagger'] || ($this->Auth->user('org_id') !== $event['Event']['org_id'] && $this->Auth->user('org_id') !== $event['Event']['orgc_id'])) {
-                        return new CakeResponse(array('body'=> json_encode(array('saved' => false, 'errors' => 'You do not have permission to do that.')), 'status' => 200, 'type' => 'json'));
-                    }
-                }
                 if (!$this->_isRest()) {
                     $this->Attribute->Event->insertLock($this->Auth->user(), $eventId);
                 }
@@ -3181,9 +3174,15 @@ class AttributesController extends AppController
             $RearrangeTool = new RequestRearrangeTool();
             $this->request->data = $RearrangeTool->rearrangeArray($this->request->data, $rearrangeRules);
             if ($id === false) {
+                if (!isset($this->request->data['attribute'])) {
+                    throw new NotFoundException(__('Invalid attribute'));
+                }
                 $id = $this->request->data['attribute'];
             }
             if ($tag_id === false) {
+                if (!isset($this->request->data['tag'])) {
+                    throw new NotFoundException(__('Invalid tag'));
+                }
                 $tag_id = $this->request->data['tag'];
             }
             $this->Attribute->id = $id;

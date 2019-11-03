@@ -194,6 +194,50 @@
         <?php
             endforeach;
         ?>
+    <?php
+        echo '<div style="width:400px;">';
+        echo $this->element('/genericElements/IndexTable/index_table', array(
+            'data' => array(
+                'data' => $dbDiagnostics,
+                'skip_pagination' => 1,
+                'fields' => array(
+                    array(
+                        'name' => __('Table'),
+                        'class' => 'bold',
+                        'data_path' => 'table'
+                    ),
+                    array(
+                        'name' => __('Used'),
+                        'class' => 'align-right short',
+                        'header_class' => 'align-right',
+                        'data_path' => 'used'
+                    ),
+                    array(
+                        'name' => __('Reclaimable'),
+                        'data_path' => 'reclaimable',
+                        'class' => 'align-right',
+                        'header_class' => 'align-right'
+                    )
+                ),
+                'title' => __('SQL database status'),
+                'description' => __('Size of each individual table on disk, along with the size that can be freed via SQL optimize. Make sure that you always have at least 3x the size of the largest table in free space in order for the update scripts to work as expected.')
+            )
+        ));
+        echo '</div>';
+    ?>
+    <h3><?= __("Redis info") ?></h3>
+    <div style="background-color:#f7f7f9;width:400px;">
+        <b><?= __('PHP extension version') ?>:</b> <?= $redisInfo['extensionVersion'] ?: ('<span class="red bold">' . __('Not installed.') . '</span>') ?><br>
+        <?php if ($redisInfo['connection']): ?>
+        <b><?= __('Redis version') ?>:</b> <?= $redisInfo['redis_version'] ?><br>
+        <b><?= __('Memory allocator') ?>:</b> <?= $redisInfo['mem_allocator'] ?><br>
+        <b><?= __('Memory usage') ?>:</b> <?= $redisInfo['used_memory_human'] ?>B<br>
+        <b><?= __('Peak memory usage') ?>:</b> <?= $redisInfo['used_memory_peak_human'] ?>B<br>
+        <b><?= __('Total system memory') ?>:</b> <?= $redisInfo['total_system_memory_human'] ?>B
+        <?php elseif ($redisInfo['extensionVersion']): ?>
+        <span class="red bold">Redis is not available. <?= $redisInfo['connection_error'] ?></span>
+        <?php endif; ?>
+    </div>
     <h3><?php echo __('Advanced attachment handler');?></h3>
         <?php echo __('The advanced attachment tools are used by the add attachment functionality to extract additional data about the uploaded sample.');?>
         <div style="background-color:#f7f7f9;width:400px;">
