@@ -8,8 +8,26 @@ CREATE TABLE IF NOT EXISTS `admin_settings` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `setting` varchar(255) COLLATE utf8_bin NOT NULL,
   `value` text COLLATE utf8_bin NOT NULL,
-  PRIMARY KEY (`id`)
+  PRIMARY KEY (`id`),
+  INDEX `setting` (`setting`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS `allowedlist` (
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `name` text CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
+
+CREATE TABLE IF NOT EXISTS `attachment_scans` (
+    `id` int(11) NOT NULL AUTO_INCREMENT,
+    `type` varchar(40) COLLATE utf8_bin NOT NULL,
+    `attribute_id` int(11) NOT NULL,
+    `infected` tinyint(1) NOT NULL,
+    `malware_name`  varchar(191) NULL,
+    `timestamp` int(11) NOT NULL,
+    PRIMARY KEY (`id`),
+    INDEX `index` (`type`, `attribute_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
 
@@ -31,9 +49,11 @@ CREATE TABLE IF NOT EXISTS `attributes` (
   `timestamp` int(11) NOT NULL DEFAULT 0,
   `distribution` tinyint(4) NOT NULL DEFAULT 0,
   `sharing_group_id` int(11) NOT NULL,
-  `comment` text COLLATE utf8_bin,
+  `comment` text COLLATE utf8_unicode_ci,
   `deleted` tinyint(1) NOT NULL DEFAULT 0,
   `disable_correlation` tinyint(1) NOT NULL DEFAULT 0,
+  `first_seen` BIGINT(20) NULL DEFAULT NULL,
+  `last_seen` BIGINT(20) NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   INDEX `event_id` (`event_id`),
   INDEX `object_id` (`object_id`),
@@ -43,6 +63,8 @@ CREATE TABLE IF NOT EXISTS `attributes` (
   INDEX `type` (`type`),
   INDEX `category` (`category`),
   INDEX `sharing_group_id` (`sharing_group_id`),
+  INDEX `first_seen` (`first_seen`),
+  INDEX `last_seen` (`last_seen`),
   UNIQUE INDEX `uuid` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
@@ -63,6 +85,24 @@ CREATE TABLE IF NOT EXISTS `attribute_tags` (
   INDEX `event_id` (`event_id`),
   INDEX `tag_id` (`tag_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
+
+CREATE TABLE IF NOT EXISTS `auth_keys` (
+    `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+    `uuid` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,
+    `authkey` varchar(72) CHARACTER SET ascii NOT NULL,
+    `authkey_start` varchar(4) CHARACTER SET ascii NOT NULL,
+    `authkey_end` varchar(4) CHARACTER SET ascii NOT NULL,
+    `created` int(10) unsigned NOT NULL,
+    `expiration` int(10) unsigned NOT NULL,
+    `user_id` int(10) unsigned NOT NULL,
+    `comment` text COLLATE utf8mb4_unicode_ci,
+    PRIMARY KEY (`id`),
+    KEY `authkey_start` (`authkey_start`),
+    KEY `authkey_end` (`authkey_end`),
+    KEY `created` (`created`),
+    KEY `expiration` (`expiration`),
+    KEY `user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- --------------------------------------------------------
 
@@ -111,16 +151,32 @@ CREATE TABLE IF NOT EXISTS `correlations` (
   `date` date NOT NULL,
   `info` text COLLATE utf8_bin NOT NULL,
   PRIMARY KEY (`id`),
-  INDEX `value` (`value`(255)),
   INDEX `event_id` (`event_id`),
   INDEX `1_event_id` (`1_event_id`),
   INDEX `attribute_id` (`attribute_id`),
-  INDEX `1_attribute_id` (`1_attribute_id`),
-  INDEX `org_id` (`org_id`),
-  INDEX `sharing_group_id` (`sharing_group_id`),
-  INDEX `a_sharing_group_id` (`a_sharing_group_id`)
+  INDEX `1_attribute_id` (`1_attribute_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
+CREATE TABLE IF NOT EXISTS dashboards (
+    `id` int(11) NOT NULL AUTO_INCREMENT,
+    `uuid` varchar(40) COLLATE utf8_bin NOT NULL,
+    `name` varchar(191) NOT NULL,
+    `description` text,
+    `default` tinyint(1) NOT NULL DEFAULT 0,
+    `selectable` tinyint(1) NOT NULL DEFAULT 0,
+    `user_id` int(11) NOT NULL DEFAULT 0,
+    `restrict_to_org_id` int(11) NOT NULL DEFAULT 0,
+    `restrict_to_role_id` int(11) NOT NULL DEFAULT 0,
+    `restrict_to_permission_flag` varchar(191) NOT NULL DEFAULT '',
+    `value` text,
+    `timestamp` int(11) NOT NULL,
+    PRIMARY KEY (id),
+    INDEX `name` (`name`),
+    INDEX `uuid` (`uuid`),
+    INDEX `user_id` (`user_id`),
+    INDEX `restrict_to_org_id` (`restrict_to_org_id`),
+    INDEX `restrict_to_permission_flag` (`restrict_to_permission_flag`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS decaying_models (
     `id` int(11) NOT NULL AUTO_INCREMENT,
@@ -175,6 +231,21 @@ CREATE TABLE IF NOT EXISTS event_graph (
     INDEX `timestamp` (`timestamp`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
+CREATE TABLE IF NOT EXISTS event_reports (
+    `id` int(11) NOT NULL AUTO_INCREMENT,
+    `uuid` varchar(40) COLLATE utf8_bin NOT NULL ,
+    `event_id` int(11) NOT NULL,
+    `name` varchar(255) NOT NULL,
+    `content` text,
+    `distribution` tinyint(4) NOT NULL DEFAULT 0,
+    `sharing_group_id` int(11),
+    `timestamp` int(11) NOT NULL,
+    `deleted` tinyint(1) NOT NULL DEFAULT 0,
+    PRIMARY KEY (id),
+    CONSTRAINT u_uuid UNIQUE (uuid),
+    INDEX `name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- --------------------------------------------------------
 
 --
@@ -199,6 +270,7 @@ CREATE TABLE IF NOT EXISTS `events` (
   `locked` tinyint(1) NOT NULL DEFAULT 0,
   `threat_level_id` int(11) NOT NULL,
   `publish_timestamp` int(11) NOT NULL DEFAULT 0,
+  `sighting_timestamp` int(11) NOT NULL DEFAULT 0,
   `disable_correlation` tinyint(1) NOT NULL DEFAULT 0,
   `extends_uuid` varchar(40) COLLATE utf8_bin DEFAULT '',
   PRIMARY KEY (`id`),
@@ -216,7 +288,7 @@ CREATE TABLE IF NOT EXISTS `events` (
 -- Table structure for `event_blacklists`
 --
 
-CREATE TABLE IF NOT EXISTS `event_blacklists` (
+CREATE TABLE IF NOT EXISTS `event_blocklists` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `event_uuid` varchar(40) COLLATE utf8_bin NOT NULL,
   `created` datetime NOT NULL,
@@ -325,8 +397,10 @@ CREATE TABLE IF NOT EXISTS `feeds` (
   `headers` TEXT COLLATE utf8_bin,
   `caching_enabled` tinyint(1) NOT NULL DEFAULT 0,
   `force_to_ids` tinyint(1) NOT NULL DEFAULT 0,
+  `orgc_id` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`),
-  INDEX `input_source` (`input_source`)
+  INDEX `input_source` (`input_source`),
+  INDEX `orgc_id` (`orgc_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- -------------------------------------------------------
@@ -434,6 +508,28 @@ CREATE TABLE IF NOT EXISTS `galaxy_reference` (
   INDEX `referenced_galaxy_cluster_type` (`referenced_galaxy_cluster_type`(255))
 
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
+
+CREATE TABLE IF NOT EXISTS inbox (
+    `id` int(11) NOT NULL AUTO_INCREMENT,
+    `uuid` varchar(40) COLLATE utf8_bin NOT NULL,
+    `title` varchar(191) NOT NULL,
+    `type` varchar(191) NOT NULL,
+    `ip` varchar(191) NOT NULL,
+    `user_agent` text,
+    `user_agent_sha256` varchar(64) NOT NULL,
+    `comment` text,
+    `deleted` tinyint(1) NOT NULL DEFAULT 0,
+    `timestamp` int(11) NOT NULL,
+    `store_as_file` tinyint(1) NOT NULL DEFAULT 0,
+    `data` longtext,
+    PRIMARY KEY (id),
+    INDEX `title` (`title`),
+    INDEX `type` (`type`),
+    INDEX `uuid` (`uuid`),
+    INDEX `user_agent_sha256` (`user_agent_sha256`),
+    INDEX `ip` (`ip`),
+    INDEX `timestamp` (`timestamp`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- --------------------------------------------------------
 
@@ -543,7 +639,7 @@ KEY `type` (`type`)
 -- Table structure for `org_blacklists`
 --
 
-CREATE TABLE IF NOT EXISTS `org_blacklists` (
+CREATE TABLE IF NOT EXISTS `org_blocklists` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `org_uuid` varchar(40) COLLATE utf8_bin NOT NULL,
   `created` datetime NOT NULL,
@@ -570,8 +666,10 @@ CREATE TABLE IF NOT EXISTS `objects` (
   `timestamp` int(11) NOT NULL DEFAULT 0,
   `distribution` tinyint(4) NOT NULL DEFAULT 0,
   `sharing_group_id` int(11),
-  `comment` text COLLATE utf8_bin NOT NULL,
+  `comment` text COLLATE utf8_unicode_ci NOT NULL,
   `deleted` tinyint(1) NOT NULL DEFAULT 0,
+  `first_seen` BIGINT(20) NULL DEFAULT NULL,
+  `last_seen` BIGINT(20) NULL DEFAULT NULL,
   PRIMARY KEY (id),
   INDEX `name` (`name`),
   INDEX `template_uuid` (`template_uuid`),
@@ -581,7 +679,9 @@ CREATE TABLE IF NOT EXISTS `objects` (
   INDEX `uuid` (`uuid`),
   INDEX `timestamp` (`timestamp`),
   INDEX `distribution` (`distribution`),
-  INDEX `sharing_group_id` (`sharing_group_id`)
+  INDEX `sharing_group_id` (`sharing_group_id`),
+  INDEX `first_seen` (`first_seen`),
+  INDEX `last_seen` (`last_seen`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- --------------------------------------------------------
@@ -603,7 +703,6 @@ CREATE TABLE IF NOT EXISTS `object_references` (
   `relationship_type` varchar(255) CHARACTER SET utf8 COLLATE utf8_unicode_ci,
   `comment` text COLLATE utf8_bin NOT NULL,
   `deleted` tinyint(1) NOT NULL DEFAULT 0,
-
   PRIMARY KEY (id),
   INDEX `source_uuid` (`source_uuid`),
   INDEX `referenced_uuid` (`referenced_uuid`),
@@ -671,7 +770,7 @@ CREATE TABLE IF NOT EXISTS `object_template_elements` (
   `sane_default` text COLLATE utf8_bin,
   `values_list` text COLLATE utf8_bin,
   `description` text COLLATE utf8_bin,
-  `disable_correlation` tinyint(1) NOT NULL DEFAULT 0,
+  `disable_correlation` tinyint(1),
   `multiple` tinyint(1) NOT NULL DEFAULT 0,
   PRIMARY KEY (id),
   INDEX `object_relation` (`object_relation`),
@@ -804,6 +903,8 @@ CREATE TABLE IF NOT EXISTS `roles` (
   `perm_publish_zmq` tinyint(1) NOT NULL DEFAULT 0,
   `perm_publish_kafka` tinyint(1) NOT NULL DEFAULT 0,
   `perm_decaying` tinyint(1) NOT NULL DEFAULT 0,
+  `enforce_rate_limit` tinyint(1) NOT NULL DEFAULT 0,
+  `rate_limit_count` int(11) NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
@@ -821,6 +922,7 @@ CREATE TABLE IF NOT EXISTS `servers` (
   `org_id` int(11) NOT NULL,
   `push` tinyint(1) NOT NULL,
   `pull` tinyint(1) NOT NULL,
+  `push_sightings` tinyint(1) NOT NULL DEFAULT 0,
   `lastpulledid` int(11) DEFAULT NULL,
   `lastpushedid` int(11) DEFAULT NULL,
   `organization` varchar(10) COLLATE utf8_bin DEFAULT NULL,
@@ -861,12 +963,14 @@ CREATE TABLE IF NOT EXISTS `shadow_attributes` (
   `org_id` int(11) NOT NULL,
   `email` varchar(255) CHARACTER SET utf8 COLLATE utf8_unicode_ci DEFAULT NULL,
   `event_org_id` int(11) NOT NULL,
-  `comment` text COLLATE utf8_bin NOT NULL,
+  `comment` text COLLATE utf8_unicode_ci NOT NULL,
   `event_uuid` varchar(40) COLLATE utf8_bin NOT NULL,
   `deleted` tinyint(1) NOT NULL DEFAULT 0,
   `timestamp` int(11) NOT NULL DEFAULT 0,
   `proposal_to_delete` BOOLEAN NOT NULL DEFAULT 0,
   `disable_correlation` tinyint(1) NOT NULL DEFAULT 0,
+  `first_seen` BIGINT(20) NULL DEFAULT NULL,
+  `last_seen` BIGINT(20) NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   INDEX `event_id` (`event_id`),
   INDEX `event_uuid` (`event_uuid`),
@@ -876,7 +980,9 @@ CREATE TABLE IF NOT EXISTS `shadow_attributes` (
   INDEX `value1` (`value1`(255)),
   INDEX `value2` (`value2`(255)),
   INDEX `type` (`type`),
-  INDEX `category` (`category`)
+  INDEX `category` (`category`),
+  INDEX `first_seen` (`first_seen`),
+  INDEX `last_seen` (`last_seen`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
 
 -- --------------------------------------------------------
@@ -914,7 +1020,7 @@ CREATE TABLE IF NOT EXISTS `shadow_attribute_correlations` (
 -- Table structure for table `sharing_group_orgs`
 --
 
-CREATE TABLE `sharing_group_orgs` (
+CREATE TABLE IF NOT EXISTS `sharing_group_orgs` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `sharing_group_id` int(11) NOT NULL,
   `org_id` int(11) NOT NULL,
@@ -930,7 +1036,7 @@ CREATE TABLE `sharing_group_orgs` (
 -- Table structure for table `sharing_group_servers`
 --
 
-CREATE TABLE `sharing_group_servers` (
+CREATE TABLE IF NOT EXISTS `sharing_group_servers` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `sharing_group_id` int(11) NOT NULL,
   `server_id` int(11) NOT NULL,
@@ -946,7 +1052,7 @@ CREATE TABLE `sharing_group_servers` (
 -- Table structure for table `sharing_groups`
 --
 
-CREATE TABLE `sharing_groups` (
+CREATE TABLE IF NOT EXISTS `sharing_groups` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `name` varchar(255) CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
   `releasability` text CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
@@ -966,6 +1072,35 @@ CREATE TABLE `sharing_groups` (
   UNIQUE INDEX `uuid` (`uuid`),
   INDEX `organisation_uuid` (`organisation_uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
+
+CREATE TABLE IF NOT EXISTS sightingdb_orgs (
+    `id` int(11) NOT NULL AUTO_INCREMENT,
+    `sightingdb_id` int(11) NOT NULL,
+    `org_id` int(11) NOT NULL,
+    PRIMARY KEY (id),
+    INDEX `sightingdb_id` (`sightingdb_id`),
+    INDEX `org_id` (`org_id`)
+) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS sightingdbs (
+    `id` int(11) NOT NULL AUTO_INCREMENT,
+    `name` varchar(255) NOT NULL,
+    `description` text,
+    `owner` varchar(255) DEFAULT '',
+    `host` varchar(255) DEFAULT 'http://localhost',
+    `port` int(11) DEFAULT 9999,
+    `timestamp` int(11) NOT NULL DEFAULT 0,
+    `enabled` tinyint(1) NOT NULL DEFAULT 0,
+    `skip_proxy` tinyint(1) NOT NULL DEFAULT 0,
+    `ssl_skip_verification` tinyint(1) NOT NULL DEFAULT 0,
+    `namespace` varchar(255) DEFAULT '',
+    PRIMARY KEY (id),
+    INDEX `name` (`name`),
+    INDEX `owner` (`owner`),
+    INDEX `host` (`host`),
+    INDEX `port` (`port`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 
 -- --------------------------------------------------------
 
@@ -1010,8 +1145,8 @@ CREATE TABLE IF NOT EXISTS tag_collection_tags (
     `tag_collection_id` int(11) NOT NULL,
     `tag_id` int(11) NOT NULL,
     PRIMARY KEY (id),
-    INDEX `uuid` (`tag_collection_id`),
-    INDEX `user_id` (`tag_id`)
+    INDEX `tag_collection_id` (`tag_collection_id`),
+    INDEX `tag_id` (`tag_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
 -- --------------------------------------------------------
@@ -1304,7 +1439,7 @@ CREATE TABLE IF NOT EXISTS `warninglists` (
   `description` text COLLATE utf8_bin NOT NULL,
   `version` int(11) NOT NULL DEFAULT '1',
   `enabled` tinyint(1) NOT NULL DEFAULT 0,
-  `warninglist_entry_count` int(11) unsigned DEFAULT NULL,
+  `warninglist_entry_count` int(11) unsigned NOT NULL DEFAULT 0,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;
 
@@ -1338,29 +1473,17 @@ CREATE TABLE IF NOT EXISTS `warninglist_types` (
 -- --------------------------------------------------------
 
 --
--- Table structure for table `whitelist`
---
-
-CREATE TABLE IF NOT EXISTS `whitelist` (
-  `id` int(11) NOT NULL AUTO_INCREMENT,
-  `name` text CHARACTER SET utf8 COLLATE utf8_unicode_ci NOT NULL,
-  PRIMARY KEY (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8 COLLATE=utf8_bin;
-
--- --------------------------------------------------------
-
---
 -- Default values for initial installation
 --
 
-INSERT INTO `admin_settings` (`id`, `setting`, `value`) VALUES
-(1, 'db_version', '40');
+INSERT IGNORE INTO `admin_settings` (`id`, `setting`, `value`) VALUES
+(1, 'db_version', '61');
 
-INSERT INTO `feeds` (`id`, `provider`, `name`, `url`, `distribution`, `default`, `enabled`) VALUES
+INSERT IGNORE INTO `feeds` (`id`, `provider`, `name`, `url`, `distribution`, `default`, `enabled`) VALUES
 (1, 'CIRCL', 'CIRCL OSINT Feed', 'https://www.circl.lu/doc/misp/feed-osint', 3, 1, 0),
 (2, 'Botvrij.eu', 'The Botvrij.eu Data', 'https://www.botvrij.eu/data/feed-osint', 3, 1, 0);
 
- INSERT INTO `regexp` (`id`, `regexp`, `replacement`, `type`) VALUES
+INSERT IGNORE INTO `regexp` (`id`, `regexp`, `replacement`, `type`) VALUES
  (1, '/.:.ProgramData./i', '%ALLUSERSPROFILE%\\\\', 'ALL'),
  (2, '/.:.Documents and Settings.All Users./i', '%ALLUSERSPROFILE%\\\\', 'ALL'),
  (3, '/.:.Program Files.Common Files./i', '%COMMONPROGRAMFILES%\\\\', 'ALL'),
@@ -1405,22 +1528,22 @@ INSERT INTO `feeds` (`id`, `provider`, `name`, `url`, `distribution`, `default`,
 -- 7. Read Only - read
 --
 
-INSERT INTO `roles` (`id`, `name`, `created`, `modified`, `perm_add`, `perm_modify`, `perm_modify_org`, `perm_publish`, `perm_publish_zmq`, `perm_publish_kafka`, `perm_sync`, `perm_admin`, `perm_audit`, `perm_full`, `perm_auth`, `perm_regexp_access`, `perm_tagger`, `perm_site_admin`, `perm_template`, `perm_sharing_group`, `perm_tag_editor`, `perm_delegate`, `perm_sighting`, `perm_object_template`, `perm_decaying`, `default_role`)
+INSERT IGNORE INTO `roles` (`id`, `name`, `created`, `modified`, `perm_add`, `perm_modify`, `perm_modify_org`, `perm_publish`, `perm_publish_zmq`, `perm_publish_kafka`, `perm_sync`, `perm_admin`, `perm_audit`, `perm_full`, `perm_auth`, `perm_regexp_access`, `perm_tagger`, `perm_site_admin`, `perm_template`, `perm_sharing_group`, `perm_tag_editor`, `perm_delegate`, `perm_sighting`, `perm_object_template`, `perm_decaying`, `default_role`)
 VALUES (1, 'admin', NOW(), NOW(), 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0);
 
-INSERT INTO `roles` (`id`, `name`, `created`, `modified`, `perm_add`, `perm_modify`, `perm_modify_org`, `perm_publish`, `perm_publish_zmq`, `perm_publish_kafka`, `perm_sync`, `perm_admin`, `perm_audit`, `perm_full`, `perm_auth`, `perm_regexp_access`, `perm_tagger`, `perm_site_admin`, `perm_template`, `perm_sharing_group`, `perm_tag_editor`, `perm_delegate`, `perm_sighting`, `perm_object_template`, `perm_decaying`, `default_role`)
+INSERT IGNORE INTO `roles` (`id`, `name`, `created`, `modified`, `perm_add`, `perm_modify`, `perm_modify_org`, `perm_publish`, `perm_publish_zmq`, `perm_publish_kafka`, `perm_sync`, `perm_admin`, `perm_audit`, `perm_full`, `perm_auth`, `perm_regexp_access`, `perm_tagger`, `perm_site_admin`, `perm_template`, `perm_sharing_group`, `perm_tag_editor`, `perm_delegate`, `perm_sighting`, `perm_object_template`, `perm_decaying`, `default_role`)
 VALUES (2, 'Org Admin', NOW(), NOW(), 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 0);
 
-INSERT INTO `roles` (`id`, `name`, `created`, `modified`, `perm_add`, `perm_modify`, `perm_modify_org`, `perm_publish`, `perm_publish_zmq`, `perm_publish_kafka`, `perm_sync`, `perm_admin`, `perm_audit`, `perm_full`, `perm_auth`, `perm_regexp_access`, `perm_tagger`, `perm_site_admin`, `perm_template`, `perm_sharing_group`, `perm_tag_editor`, `perm_delegate`, `perm_sighting`, `perm_object_template`, `perm_decaying`, `default_role`)
+INSERT IGNORE INTO `roles` (`id`, `name`, `created`, `modified`, `perm_add`, `perm_modify`, `perm_modify_org`, `perm_publish`, `perm_publish_zmq`, `perm_publish_kafka`, `perm_sync`, `perm_admin`, `perm_audit`, `perm_full`, `perm_auth`, `perm_regexp_access`, `perm_tagger`, `perm_site_admin`, `perm_template`, `perm_sharing_group`, `perm_tag_editor`, `perm_delegate`, `perm_sighting`, `perm_object_template`, `perm_decaying`, `default_role`)
 VALUES (3, 'User', NOW(), NOW(), 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1);
 
-INSERT INTO `roles` (`id`, `name`, `created`, `modified`, `perm_add`, `perm_modify`, `perm_modify_org`, `perm_publish`, `perm_publish_zmq`, `perm_publish_kafka`, `perm_sync`, `perm_admin`, `perm_audit`, `perm_full`, `perm_auth`, `perm_regexp_access`, `perm_tagger`, `perm_site_admin`, `perm_template`, `perm_sharing_group`, `perm_tag_editor`, `perm_delegate`, `perm_sighting`, `perm_object_template`, `perm_decaying`, `default_role`)
+INSERT IGNORE INTO `roles` (`id`, `name`, `created`, `modified`, `perm_add`, `perm_modify`, `perm_modify_org`, `perm_publish`, `perm_publish_zmq`, `perm_publish_kafka`, `perm_sync`, `perm_admin`, `perm_audit`, `perm_full`, `perm_auth`, `perm_regexp_access`, `perm_tagger`, `perm_site_admin`, `perm_template`, `perm_sharing_group`, `perm_tag_editor`, `perm_delegate`, `perm_sighting`, `perm_object_template`, `perm_decaying`, `default_role`)
 VALUES (4, 'Publisher', NOW(), NOW(), 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0);
 
-INSERT INTO `roles` (`id`, `name`, `created`, `modified`, `perm_add`, `perm_modify`, `perm_modify_org`, `perm_publish`, `perm_publish_zmq`, `perm_publish_kafka`, `perm_sync`, `perm_admin`, `perm_audit`, `perm_full`, `perm_auth`, `perm_regexp_access`, `perm_tagger`, `perm_site_admin`, `perm_template`, `perm_sharing_group`, `perm_tag_editor`, `perm_delegate`, `perm_sighting`, `perm_object_template`, `perm_decaying`, `default_role`)
+INSERT IGNORE INTO `roles` (`id`, `name`, `created`, `modified`, `perm_add`, `perm_modify`, `perm_modify_org`, `perm_publish`, `perm_publish_zmq`, `perm_publish_kafka`, `perm_sync`, `perm_admin`, `perm_audit`, `perm_full`, `perm_auth`, `perm_regexp_access`, `perm_tagger`, `perm_site_admin`, `perm_template`, `perm_sharing_group`, `perm_tag_editor`, `perm_delegate`, `perm_sighting`, `perm_object_template`, `perm_decaying`, `default_role`)
 VALUES (5, 'Sync user', NOW(), NOW(), 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 0);
 
-INSERT INTO `roles` (`id`, `name`, `created`, `modified`, `perm_add`, `perm_modify`, `perm_modify_org`, `perm_publish`, `perm_publish_zmq`, `perm_publish_kafka`, `perm_sync`, `perm_admin`, `perm_audit`, `perm_full`, `perm_auth`, `perm_regexp_access`, `perm_tagger`, `perm_site_admin`, `perm_template`, `perm_sharing_group`, `perm_tag_editor`, `perm_delegate`, `perm_sighting`, `perm_object_template`, `perm_decaying`, `default_role`)
+INSERT IGNORE INTO `roles` (`id`, `name`, `created`, `modified`, `perm_add`, `perm_modify`, `perm_modify_org`, `perm_publish`, `perm_publish_zmq`, `perm_publish_kafka`, `perm_sync`, `perm_admin`, `perm_audit`, `perm_full`, `perm_auth`, `perm_regexp_access`, `perm_tagger`, `perm_site_admin`, `perm_template`, `perm_sharing_group`, `perm_tag_editor`, `perm_delegate`, `perm_sighting`, `perm_object_template`, `perm_decaying`, `default_role`)
 VALUES (6, 'Read Only', NOW(), NOW(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
 -- --------------------------------------------------------
@@ -1429,7 +1552,7 @@ VALUES (6, 'Read Only', NOW(), NOW(), 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 
 -- Initial threat levels
 --
 
-INSERT INTO `threat_levels` (`id`, `name`, `description`, `form_description`)
+INSERT IGNORE INTO `threat_levels` (`id`, `name`, `description`, `form_description`)
 VALUES
   (1, 'High', '*high* means sophisticated APT malware or 0-day attack', 'Sophisticated APT malware or 0-day attack'),
   (2, 'Medium', '*medium* means APT malware', 'APT malware'),
@@ -1442,13 +1565,13 @@ VALUES
 -- Default templates
 --
 
-INSERT INTO `templates` (`id`, `name`, `description`, `org`, `share`) VALUES
+INSERT IGNORE INTO `templates` (`id`, `name`, `description`, `org`, `share`) VALUES
 (1, 'Phishing E-mail', 'Create a MISP event about a Phishing E-mail.', 'MISP', 1),
 (2, 'Phishing E-mail with malicious attachment', 'A MISP event based on Spear-phishing containing a malicious attachment. This event can include anything from the description of the e-mail itself, the malicious attachment and its description as well as the results of the analysis done on the malicious f', 'MISP', 1),
 (3, 'Malware Report', 'This is a template for a generic malware report. ', 'MISP', 1),
 (4, 'Indicator List', 'A simple template for indicator lists.', 'MISP', 1);
 
-INSERT INTO `template_elements` (`id`, `template_id`, `position`, `element_definition`) VALUES
+INSERT IGNORE INTO `template_elements` (`id`, `template_id`, `position`, `element_definition`) VALUES
 (1, 1, 2, 'attribute'),
 (2, 1, 3, 'attribute'),
 (3, 1, 1, 'text'),
@@ -1495,7 +1618,7 @@ INSERT INTO `template_elements` (`id`, `template_id`, `position`, `element_defin
 (46, 4, 2, 'attribute'),
 (47, 4, 3, 'attribute');
 
-INSERT INTO `template_element_attributes` (`id`, `template_element_id`, `name`, `description`, `to_ids`, `category`, `complex`, `type`, `mandatory`, `batch`) VALUES
+INSERT IGNORE INTO `template_element_attributes` (`id`, `template_element_id`, `name`, `description`, `to_ids`, `category`, `complex`, `type`, `mandatory`, `batch`) VALUES
 (1, 1, 'From address', 'The source address from which the e-mail was sent.', 1, 'Payload delivery', 0, 'email-src', 1, 1),
 (2, 2, 'Malicious url', 'The malicious url in the e-mail body.', 1, 'Payload delivery', 0, 'url', 1, 1),
 (3, 4, 'E-mail subject', 'The subject line of the e-mail.', 0, 'Payload delivery', 0, 'email-subject', 1, 0),
@@ -1527,13 +1650,13 @@ INSERT INTO `template_element_attributes` (`id`, `template_element_id`, `name`, 
 (29, 46, 'Network Indicators', 'Paste any combination of IP addresses, hostnames, domains or URL', 1, 'Network activity', 1, 'CnC', 0, 1),
 (30, 47, 'File Indicators', 'Paste any file hashes that you have (MD5, SHA1, SHA256) or filenames below. You can also add filename and hash pairs by using the following syntax for each applicable column: filename|hash ', 1, 'Payload installation', 1, 'File', 0, 1);
 
-INSERT INTO `template_element_files` (`id`, `template_element_id`, `name`, `description`, `category`, `malware`, `mandatory`, `batch`) VALUES
+INSERT IGNORE INTO `template_element_files` (`id`, `template_element_id`, `name`, `description`, `category`, `malware`, `mandatory`, `batch`) VALUES
 (1, 14, 'Malicious Attachment', 'The file (or files) that was (were) attached to the e-mail itself.', 'Payload delivery', 1, 0, 1),
 (2, 21, 'Payload installation', 'Payload installation detected during the analysis', 'Payload installation', 1, 0, 1),
 (3, 30, 'Malware sample', 'The sample that the report is based on', 'Payload delivery', 1, 0, 0),
 (4, 40, 'Artifacts dropped (Sample)', 'Upload any files that were dropped during the analysis.', 'Artifacts dropped', 1, 0, 1);
 
-INSERT INTO `template_element_texts` (`id`, `name`, `template_element_id`, `text`) VALUES
+INSERT IGNORE INTO `template_element_texts` (`id`, `name`, `template_element_id`, `text`) VALUES
 (1, 'Required fields', 3, 'The fields below are mandatory.'),
 (2, 'Optional information', 5, 'All of the fields below are optional, please fill out anything that''s applicable.'),
 (4, 'Required Fields', 11, 'The following fields are mandatory'),
@@ -1546,6 +1669,8 @@ INSERT INTO `template_element_texts` (`id`, `name`, `template_element_id`, `text
 (11, 'Persistence mechanism', 41, 'The following fields allow you to describe the persistence mechanism used by the malware'),
 (12, 'Indicators', 45, 'Just paste your list of indicators based on type into the appropriate field. All of the fields are optional, so inputting a list of IP addresses into the Network indicator field for example is sufficient to complete this template.');
 
-INSERT INTO `org_blacklists` (`org_uuid`, `created`, `org_name`, `comment`) VALUES
+INSERT IGNORE INTO `org_blacklists` (`org_uuid`, `created`, `org_name`, `comment`) VALUES
 ('58d38339-7b24-4386-b4b4-4c0f950d210f', NOW(), 'Setec Astrononomy', 'default example'),
 ('58d38326-eda8-443a-9fa8-4e12950d210f', NOW(), 'Acme Finance', 'default example');
+
+INSERT IGNORE INTO `admin_settings` (`setting`, `value`) VALUES ('fix_login', NOW());

@@ -1,6 +1,9 @@
 <?php
 App::uses('AppModel', 'Model');
 
+/**
+ * @property Tag $Tag
+ */
 class AttributeTag extends AppModel
 {
     public $actsAs = array('Containable');
@@ -84,6 +87,44 @@ class AttributeTag extends AppModel
     {
         $this->delete($id);
     }
+    
+    /**
+     * handleAttributeTags
+     *
+     * @param  array $attribute
+     * @param  int   $event_id
+     * @param  bool  $capture
+     * @return void
+     */
+    public function handleAttributeTags($user, array $attribute, $event_id, $capture = false)
+    {
+        if ($user['Role']['perm_tagger']) {
+            if (isset($attribute['Tag'])) {
+                foreach ($attribute['Tag'] as $tag) {
+                    if (!isset($tag['id'])) {
+                        if ($capture) {
+                            $tag_id = $this->Tag->captureTag($tag, $user);
+                        } else {
+                            $tag_id = $this->Tag->lookupTagIdFromName($tag['name']);
+                        }
+                        $tag['id'] = $tag_id;
+                    }
+                    if ($tag['id'] > 0) {
+                        $this->handleAttributeTag($attribute['id'], $event_id, $tag);
+                    }
+                }
+            }
+        }
+    }
+
+    public function handleAttributeTag($attribute_id, $event_id, $tag)
+    {
+        if (empty($tag['deleted'])) {
+            $this->attachTagToAttribute($attribute_id, $event_id, $tag['id']);
+        } else {
+            $this->detachTagFromAttribute($attribute_id, $event_id, $tag['id']);
+        }
+    }
 
     public function attachTagToAttribute($attribute_id, $event_id, $tag_id)
     {
@@ -103,12 +144,61 @@ class AttributeTag extends AppModel
         return true;
     }
 
-    public function countForTag($tag_id, $user)
+    public function detachTagFromAttribute($attribute_id, $event_id, $tag_id)
     {
-        return $this->find('count', array(
+        $existingAssociation = $this->find('first', array(
             'recursive' => -1,
-            'conditions' => array('AttributeTag.tag_id' => $tag_id)
+            'conditions' => array(
+                'tag_id' => $tag_id,
+                'event_id' => $event_id,
+                'attribute_id' => $attribute_id
+            )
         ));
+
+        if (!empty($existingAssociation)) {
+            $result = $this->delete($existingAssociation['AttributeTag']['id']);
+            if ($result) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // This function help mirroring the tags at attribute level. It will delete tags that are not present on the remote attribute
+    public function pruneOutdatedAttributeTagsFromSync($newerTags, $originalAttributeTags)
+    {
+        $newerTagsName = array();
+        foreach ($newerTags as $tag) {
+            $newerTagsName[] = strtolower($tag['name']);
+        }
+        foreach ($originalAttributeTags as $k => $attributeTag) {
+            if (!$attributeTag['local']) { //
+                if (!in_array(strtolower($attributeTag['Tag']['name']), $newerTagsName)) {
+                    $this->softDelete($attributeTag['id']);
+                }
+            }
+        }
+    }
+
+    /**
+     * @param array $tagIds
+     * @param array $user - Currently ignored for performance reasons
+     * @return array
+     */
+    public function countForTags(array $tagIds, array $user)
+    {
+        if (empty($tagIds)) {
+            return [];
+        }
+        $this->virtualFields['attribute_count'] = 'COUNT(AttributeTag.id)';
+        $counts = $this->find('list', [
+            'recursive' => -1,
+            'fields' => ['AttributeTag.tag_id', 'attribute_count'],
+            'conditions' => ['AttributeTag.tag_id' => $tagIds],
+            'group' => ['AttributeTag.tag_id'],
+        ]);
+        unset($this->virtualFields['attribute_count']);
+        return $counts;
     }
 
     // Fetch all tags attached to attribute belonging to supplied event. No ACL if user not provided
@@ -162,21 +252,12 @@ class AttributeTag extends AppModel
 
 
     // find all tags that belong to a list of attributes (contained in the same event)
-    public function getAttributesTags($user, $requestedEventId, $attributeIds=false, $includeGalaxies=false) {
-        $conditions = array('Attribute.event_id' => $requestedEventId);
-        if (is_array($attributeIds) && $attributeIds !== false) {
-            $conditions['Attribute.id'] = $attributeIds;
-        }
-
-        $allTags = array();
-        $attributes = $this->Attribute->fetchAttributes($user, array(
-            'conditions' => $conditions,
-            'flatten' => 1,
-        ));
-
+    public function getAttributesTags(array $attributes, $includeGalaxies=false)
+    {
         if (empty($attributes)) {
             return array();
         }
+
         $this->GalaxyCluster = ClassRegistry::init('GalaxyCluster');
         $cluster_names = $this->GalaxyCluster->find('list', array(
                 'recursive' => -1,
@@ -185,7 +266,7 @@ class AttributeTag extends AppModel
         $allTags = array();
         foreach ($attributes as $attribute) {
             $attributeTags = $attribute['AttributeTag'];
-            foreach ($attributeTags as $k => $attributeTag) {
+            foreach ($attributeTags as $attributeTag) {
                 if ($includeGalaxies || !isset($cluster_names[$attributeTag['Tag']['name']])) {
                     $allTags[$attributeTag['Tag']['id']] = $attributeTag['Tag'];
                 }
@@ -195,16 +276,8 @@ class AttributeTag extends AppModel
     }
 
     // find all galaxies that belong to a list of attributes (contains in the same event)
-    public function getAttributesClusters($user, $requestedEventId, $attributeIds=false) {
-        $conditions = array('Attribute.event_id' => $requestedEventId);
-        if (is_array($attributeIds) && $attributeIds !== false) {
-            $conditions['Attribute.id'] = $attributeIds;
-        }
-
-        $attributes = $this->Attribute->fetchAttributes($user, array(
-            'conditions' => $conditions,
-            'flatten' => 1,
-        ));
+    public function getAttributesClusters(array $attributes)
+    {
         if (empty($attributes)) {
             return array();
         }
@@ -219,9 +292,9 @@ class AttributeTag extends AppModel
         foreach ($attributes as $attribute) {
             $attributeTags = $attribute['AttributeTag'];
 
-            foreach ($attributeTags as $k => $attributeTag) {
+            foreach ($attributeTags as $attributeTag) {
                 if (isset($cluster_names[$attributeTag['Tag']['name']])) {
-                    $cluster = $this->GalaxyCluster->find('first', array(
+                    $cluster = $this->GalaxyCluster->fetchGalaxyClusters($user, array(
                             'conditions' => array('GalaxyCluster.tag_name' => $attributeTag['Tag']['name']),
                             'fields' => array('value', 'description', 'type'),
                             'contain' => array(
@@ -229,9 +302,11 @@ class AttributeTag extends AppModel
                                     'conditions' => array('GalaxyElement.key' => 'synonyms')
                                 )
                             ),
-                            'recursive' => -1
+                            'first' => true
                     ));
-
+                    if (empty($cluster)) {
+                        continue;
+                    }
                     // create synonym string
                     $cluster['GalaxyCluster']['synonyms_string'] = array();
                     foreach ($cluster['GalaxyElement'] as $element) {

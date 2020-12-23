@@ -504,7 +504,7 @@
                 this._draw();
             },
 
-            _create_all_tag_html: function(tag) {
+            _create_all_tag_html: function(tag, row_i) {
                 var that = this;
                 if (tag !== false) {
                     var html_tag = this._create_tag_html(tag);
@@ -517,7 +517,7 @@
                         }
                     });
                     if (overridden_html !== '') {
-                        return '<div style="position:relative;" class="useCursorPointer overridden_tags_container">'
+                        return '<div style="position:relative;" class="useCursorPointer overridden_tags_container" data-row="' + row_i + '">'
                             + overridden_html
                             + '<div class="attribute_tag_wrapper" style="top:-12px;margin-bottom:-12px; left:4px;margin-right:-4px; float: left;  position: relative;">' + html_tag + '</div>'
                         + '</div>';
@@ -548,11 +548,11 @@
                 if (tag === false) {
                     return ['', '', '', this.base_score.toFixed(2)];
                 }
-                var namespace = tag.Tag.name.split('=')[0];
+                var basename = this._extractTagPart(tag.Tag.name);
 
-                if (this.base_score_config.taxonomy_effective_ratios[namespace] !== undefined) {
-                    var html1 = this.base_score_config.taxonomy_effective_ratios[namespace].toFixed(2);
-                    var html4 = (parseFloat(tag.Tag.numerical_value) * this.base_score_config.taxonomy_effective_ratios[namespace]).toFixed(2);
+                if (this.base_score_config.taxonomy_effective_ratios[basename] !== undefined) {
+                    var html1 = this.base_score_config.taxonomy_effective_ratios[basename].toFixed(2);
+                    var html4 = (parseFloat(tag.Tag.numerical_value) * this.base_score_config.taxonomy_effective_ratios[basename]).toFixed(2);
                 } else {
                     var html1 = '0';
                     var html4 = '0';
@@ -583,7 +583,7 @@
                     .data(function (tag, row_i) {
                         var html_computation = that._get_computation_step(tag);
                         return [
-                            that._create_all_tag_html(tag),
+                            that._create_all_tag_html(tag, row_i),
                             html_computation[0], html_computation[1], html_computation[2], html_computation[3]
                         ]
                     });
@@ -602,8 +602,9 @@
                     .style('opacity', 1.0)
                     .each("end", function(td_content, col_i){
                         var $div = $(td_content);
+                        var row_i = $div.data('row');
                         if (col_i == 0 && $div.hasClass('overridden_tags_container')) {
-                            $('.overridden_tags_container').popover({
+                            $('.overridden_tags_container[data-row="' + row_i + '"]').popover({
                                 title: 'Event tag overridden by Attribute tag',
                                 content: that._generateOverridenExplanationPopoverHTML($div),
                                 html: true,
@@ -638,6 +639,20 @@
                 }
                 this.$container;
             },
+
+            _extractTagPart: function(tag) {
+                var reTag = /^(?<namespace>[^:="]+):(?<predicate>[^:="]+)(="(?<value>[^:="]+)")?$/
+                var result = tag.match(reTag);
+                var tagBaseName = '';
+                if (result !== null && result.groups.value !== undefined) {
+                    tagBaseName = result.groups.namespace + ':' + result.groups.predicate;
+                } else if (result !== null) {
+                    tagBaseName = result.groups.namespace;
+                } else {
+                    tagBaseName = tag
+                }
+                return tagBaseName;
+            }
         }
 
         $.BasescoreComputationTable = BasescoreComputationTable;

@@ -1,5 +1,5 @@
-MISP - Malware Information Sharing Platform and Threat Sharing
---------------------------------------------------------------
+MISP - Threat Intelligence Sharing Platform
+-------------------------------------------
 
 ![logo](./INSTALL/logos/misp-logo.png?raw=true "MISP")
 
@@ -9,8 +9,8 @@ MISP - Malware Information Sharing Platform and Threat Sharing
   <td><a href="https://badge.fury.io/gh/MISP%2FMISP"><img src="https://badge.fury.io/gh/MISP%2FMISP.svg" alt="GitHub version" height="18"></a></td>
 </tr>
 <tr>
-  <td>Travis</td>
-  <td><a href="https://travis-ci.org/MISP/MISP"><img src="https://img.shields.io/travis/MISP/MISP/2.4.svg" /></a></td>
+  <td>CI Action</td>
+  <td><a href="https://github.com/MISP/MISP/actions?query=workflow%3Amisp"><img src="https://github.com/MISP/MISP/workflows/misp/badge.svg" /></a></td>
 </tr>
 <tr>
   <td>Gitter</td>
@@ -104,11 +104,16 @@ License
 
 This software is licensed under [GNU Affero General Public License version 3](http://www.gnu.org/licenses/agpl-3.0.html)
 
-* Copyright (C) 2012 Christophe Vandeplas
+* Copyright (C) 2012-2020 Christophe Vandeplas
 * Copyright (C) 2012 Belgian Defence
 * Copyright (C) 2012 NATO / NCIRC
-* Copyright (C) 2013-2019 Andras Iklody
-* Copyright (C) 2015-2019 CIRCL - Computer Incident Response Center Luxembourg
+* Copyright (C) 2013-2020 Andras Iklody
+* Copyright (C) 2015-2020 CIRCL - Computer Incident Response Center Luxembourg
 * Copyright (C) 2016 Andreas Ziegler
+* Copyright (C) 2018-2020 Sami Mokaddem
+* Copyright (C) 2018-2020 Christian Studer
+* Copyright (C) 2015-2020 Alexandre Dulaunoy
+* Copyright (C) 2018-2020 Steve Clement
+* Copyright (C) 2020 Jakub Onderka
 
 For more information, [the list of authors and contributors](AUTHORS) is available.

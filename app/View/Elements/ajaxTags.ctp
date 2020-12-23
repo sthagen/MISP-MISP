@@ -2,9 +2,9 @@
     if (empty($scope)) {
         $scope = 'event';
     }
+    $searchUrl = '/events/index/searchtag:';
     switch ($scope) {
         case 'event':
-            $searchUrl = '/events/index/searchtag:';
             $id = h($event['Event']['id']);
             if (!empty($required_taxonomies)) {
                 foreach ($required_taxonomies as $k => $v) {
@@ -67,7 +67,7 @@
             }
         }
         $aText = h($aText);
-        $span_scope = sprintf(
+        $span_scope = !empty($hide_global_scope) ? '' : sprintf(
             '<span class="%s" title="%s" aria-label="%s"><i class="fas fa-%s"></i></span>',
             'black-white tag',
             !empty($tag['local']) ? __('Local tag') : __('Global tag'),
@@ -113,16 +113,15 @@
                 )
             );
         }
-        $tagData .= '<span class="tag-container nowrap  ">' . $span_scope . $span_tag . $span_delete . '</span> ';
+        $tagData .= '<span class="tag-container nowrap">' . $span_scope . $span_tag . $span_delete . '</span> ';
     }
     $buttonData = array();
     if ($full) {
         $buttonData[] = sprintf(
-            '<button id="%s" title="%s" role ="button" tabindex="0" aria-label="%s" class="%s" style="%s" onClick="%s">%s</button>',
-            'addTagButton',
+            '<button title="%s" role="button" tabindex="0" aria-label="%s" class="%s" style="%s" onClick="%s">%s</button>',
             __('Add a tag'),
             __('Add a tag'),
-            'btn btn-inverse noPrint',
+            'addTagButton btn btn-inverse noPrint',
             'line-height:10px; padding: 2px;',
             sprintf(
                 "popoverPopup(this, '%s%s', '%s', '%s');",
@@ -136,11 +135,10 @@
     }
     if ($host_org_editor || $full) {
         $buttonData[] = sprintf(
-            '<button id="%s" title="%s" role ="button" tabindex="0" aria-label="%s" class="%s" style="%s" onClick="%s">%s</button>',
-            'addLocalTagButton',
+            '<button title="%s" role="button" tabindex="0" aria-label="%s" class="%s" style="%s" onClick="%s">%s</button>',
             __('Add a local tag'),
             __('Add a local tag'),
-            'btn btn-inverse noPrint',
+            'addLocalTagButton btn btn-inverse noPrint',
             'line-height:10px; padding: 2px;',
             sprintf(
                 "popoverPopup(this, '%s%s', '%s', '%s')",
@@ -162,4 +160,36 @@
         '<span class="tag-list-container">%s</span>',
         $tagData
     );
+    $tagConflictData = '';
+    if (!empty($tagConflicts['global'])) {
+        $tagConflictData .= '<div><div class="alert alert-error tag-conflict-notice">';
+        $tagConflictData .= '<i class="fas fa-globe-americas icon"></i>';
+        $tagConflictData .= '<div class="text-container">';
+        foreach ($tagConflicts['global'] as $tagConflict) {
+            $tagConflictData .= sprintf(
+                '<strong>%s</strong></br>',
+                h($tagConflict['conflict'])
+            );
+            foreach ($tagConflict['tags'] as $tag) {
+                $tagConflictData .= sprintf('<span class="apply_css_arrow nowrap">%s</span></br>', h($tag));
+            }
+        }
+        $tagConflictData .= '</div></div></span>';
+    }
+    if (!empty($tagConflicts['local'])) {
+        $tagConflictData .= '<div><div class="alert alert-error tag-conflict-notice">';
+        $tagConflictData .= '<i class="fas fa-user icon"></i>';
+        $tagConflictData .= '<div class="text-container">';
+        foreach ($tagConflicts['local'] as $tagConflict) {
+            $tagConflictData .= sprintf(
+                '<strong>%s</strong></br>',
+                h($tagConflict['conflict'])
+            );
+            foreach ($tagConflict['tags'] as $tag) {
+                $tagConflictData .= sprintf('<span class="apply_css_arrow nowrap">%s</span></br>', h($tag));
+            }
+        }
+        $tagConflictData .= '</div></div></span>';
+    }
+    echo $tagConflictData;
 ?>

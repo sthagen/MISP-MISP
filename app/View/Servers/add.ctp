@@ -64,7 +64,7 @@
             <input type="text" id="ServerExternalName" <?php if (isset($this->request->data['Server']['external_name'])) echo 'value="' . $this->request->data['Server']['external_name'] . '"';?>>
         </div>
         <div id="ServerExternalUuidContainer" class="input select hiddenField" style="display:none;">
-            <label for="ServerExternalUuid"><?php echo __('Remote Organisation\'s Uuid');?></label>
+            <label for="ServerExternalUuid"><?php echo __('Remote Organisation\'s UUID');?></label>
             <input type="text" id="ServerExternalUuid" <?php if (isset($this->request->data['Server']['external_uuid'])) echo 'value="' . $this->request->data['Server']['external_uuid'] . '"';?>>
         </div>
         <div class = "input clear"></div>
@@ -74,12 +74,15 @@
         echo sprintf(
             '<div id="AuthkeyContainer"><p class="red clear" style="width:50%%;">%s</p>%s</div>',
             __('Ask the owner of the remote instance for a sync account on their instance, log into their MISP using the sync user\'s credentials and retrieve your API key by navigating to Global actions -> My profile. This key is used to authenticate with the remote instance.'),
-            $this->Form->input('authkey', array())
+            $this->Form->input('authkey', array('autocomplete' => 'off'))
         );
         echo '<div class = "input clear" style="width:100%;"><hr /></div>';
         echo '<h4 class="input clear">' . __('Enabled synchronisation methods') . '</h4>';
         echo $this->Form->input('push', array());
         echo $this->Form->input('pull', array());
+        echo $this->Form->input('push_sightings', array());
+        echo $this->Form->input('push_galaxy_clusters', array());
+        echo $this->Form->input('pull_galaxy_clusters', array());
         echo $this->Form->input('caching_enabled', array());
         echo '<div class = "input clear" style="width:100%;"><hr /></div>';
         echo $this->Form->input('unpublish_event', array(

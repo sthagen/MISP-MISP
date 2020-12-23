@@ -1,6 +1,10 @@
 <?php
 App::uses('AppModel', 'Model');
 App::uses('ConnectionManager', 'Model');
+
+/**
+ * @property Event $Event
+ */
 class Organisation extends AppModel
 {
     public $useTable = 'organisations';
@@ -33,9 +37,9 @@ class Organisation extends AppModel
                 'rule' => 'isUnique',
                 'message' => 'An organisation with this UUID already exists.'
             ),
-            'simpleuuid' => array(
-                'rule' => array('custom', '/^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/'),
-                'message' => 'Please provide a valid UUID',
+            'uuid' => array(
+                'rule' => 'uuid',
+                'message' => 'Please provide a valid RFC 4122 UUID',
                 'allowEmpty' => true
             ),
             'valueNotEmpty' => array(
@@ -68,8 +72,6 @@ class Organisation extends AppModel
         ),
     );
 
-    public $countries = array('Not specified', 'International', 'Afghanistan', 'Albania', 'Algeria', 'Andorra', 'Angola', 'Antigua & Deps', 'Argentina', 'Armenia', 'Australia', 'Austria', 'Azerbaijan', 'Bahamas', 'Bahrain', 'Bangladesh', 'Barbados', 'Belarus', 'Belgium', 'Belize', 'Benin', 'Bhutan', 'Bolivia', 'Bosnia Herzegovina', 'Botswana', 'Brazil', 'Brunei', 'Bulgaria', 'Burkina', 'Burundi', 'Cambodia', 'Cameroon', 'Canada', 'Cape Verde', 'Central African Rep', 'Chad', 'Chile', 'China', 'Colombia', 'Comoros', 'Congo', 'Congo {Democratic Rep}', 'Costa Rica', 'Croatia', 'Cuba', 'Cyprus', 'Czech Republic', 'Denmark', 'Djibouti', 'Dominica', 'Dominican Republic', 'East Timor', 'Ecuador', 'Egypt', 'El Salvador', 'Equatorial Guinea', 'Eritrea', 'Estonia', 'Ethiopia', 'Fiji', 'Finland', 'France', 'Gabon', 'Gambia', 'Georgia', 'Germany', 'Ghana', 'Greece', 'Grenada', 'Guatemala', 'Guinea', 'Guinea-Bissau', 'Guyana', 'Haiti', 'Honduras', 'Hungary', 'Iceland', 'India', 'Indonesia', 'Iran', 'Iraq', 'Ireland {Republic}', 'Israel', 'Italy', 'Ivory Coast', 'Jamaica', 'Japan', 'Jordan', 'Kazakhstan', 'Kenya', 'Kiribati', 'Korea North', 'Korea South', 'Kosovo', 'Kuwait', 'Kyrgyzstan', 'Laos', 'Latvia', 'Lebanon', 'Lesotho', 'Liberia', 'Libya', 'Liechtenstein', 'Lithuania', 'Luxembourg', 'Macedonia', 'Madagascar', 'Malawi', 'Malaysia', 'Maldives', 'Mali', 'Malta', 'Marshall Islands', 'Mauritania', 'Mauritius', 'Mexico', 'Micronesia', 'Moldova', 'Monaco', 'Mongolia', 'Montenegro', 'Morocco', 'Mozambique', 'Myanmar, {Burma}', 'Namibia', 'Nauru', 'Nepal', 'Netherlands', 'New Zealand', 'Nicaragua', 'Niger', 'Nigeria', 'Norway', 'Oman', 'Pakistan', 'Palau', 'Panama', 'Papua New Guinea', 'Paraguay', 'Peru', 'Philippines', 'Poland', 'Portugal', 'Qatar', 'Romania', 'Russian Federation', 'Rwanda', 'St Kitts & Nevis', 'St Lucia', 'Saint Vincent & the Grenadines', 'Samoa', 'San Marino', 'Sao Tome & Principe', 'Saudi Arabia', 'Senegal', 'Serbia', 'Seychelles', 'Sierra Leone', 'Singapore', 'Slovakia', 'Slovenia', 'Solomon Islands', 'Somalia', 'South Africa', 'South Sudan', 'Spain', 'Sri Lanka', 'Sudan', 'Suriname', 'Swaziland', 'Sweden', 'Switzerland', 'Syria', 'Taiwan', 'Tajikistan', 'Tanzania', 'Thailand', 'Togo', 'Tonga', 'Trinidad & Tobago', 'Tunisia', 'Turkey', 'Turkmenistan', 'Tuvalu', 'Uganda', 'Ukraine', 'United Arab Emirates', 'United Kingdom', 'United States of America', 'Uruguay', 'Uzbekistan', 'Vanuatu', 'Vatican City', 'Venezuela', 'Vietnam', 'Yemen', 'Zambia', 'Zimbabwe');
-
     public $organisationAssociations = array(
             'Correlation' => array('table' => 'correlations', 'fields' => array('org_id')),
             'Event' => array('table' => 'events', 'fields' => array('org_id', 'orgc_id')),
@@ -82,13 +84,30 @@ class Organisation extends AppModel
             'User' => array('table' => 'users', 'fields' => array('org_id'))
     );
 
+    public $genericMISPOrganisation = array(
+        'id' => '0',
+        'name' => 'MISP',
+        'date_created' => '',
+        'date_modified' => '',
+        'description' => 'Automatically generated MISP organisation',
+        'type' => '',
+        'nationality' => 'Not specified',
+        'sector' => '',
+        'created_by' => '0',
+        'uuid' => '0',
+        'contacts' => '',
+        'local' => true,
+        'restricted_to_domain' => '',
+        'landingpage' => null
+    );
+
     public function beforeValidate($options = array())
     {
         parent::beforeValidate();
         if (empty($this->data['Organisation']['uuid'])) {
             $this->data['Organisation']['uuid'] = CakeText::uuid();
         } else {
-            $this->data['Organisation']['uuid'] = trim($this->data['Organisation']['uuid']);
+            $this->data['Organisation']['uuid'] = strtolower(trim($this->data['Organisation']['uuid']));
         }
         $date = date('Y-m-d H:i:s');
         if (!empty($this->data['Organisation']['restricted_to_domain'])) {
@@ -106,7 +125,7 @@ class Organisation extends AppModel
         }
         $this->data['Organisation']['date_modified'] = $date;
         if (!isset($this->data['Organisation']['nationality']) || empty($this->data['Organisation']['nationality'])) {
-            $this->data['Organisation']['nationality'] = 'Not specified';
+            $this->data['Organisation']['nationality'] = '';
         }
         return true;
     }
@@ -199,7 +218,7 @@ class Organisation extends AppModel
                 $changed = true;
             }
             if ($force) {
-                $fields = array('type', 'date_created', 'date_modified', 'nationality', 'sector', 'contacts', 'landingpage');
+                $fields = array('type', 'date_created', 'date_modified', 'nationality', 'sector', 'contacts');
                 foreach ($fields as $field) {
                     if (isset($org[$field])) {
                         if ($existingOrg['Organisation'][$field] != $org[$field]) {
@@ -218,20 +237,27 @@ class Organisation extends AppModel
         return $existingOrg[$this->alias]['id'];
     }
 
-    public function createOrgFromName($name, $user_id, $local)
+    /**
+     * @param string $name Organisation name
+     * @param int $userId Organisation creator
+     * @param bool $local True if organisation should be marked as local
+     * @return int Existing or newly created organisation ID
+     * @throws Exception
+     */
+    public function createOrgFromName($name, $userId, $local)
     {
-        $existingOrg = $this->find('first', array(
-                'recursive' => -1,
-                'conditions' => array('name' => $name)
-        ));
+        $existingOrg = $this->find('first', [
+            'recursive' => -1,
+            'conditions' => ['name' => $name],
+            'fields' => ['id'],
+        ]);
         if (empty($existingOrg)) {
             $this->create();
-            $organisation = array(
-                    'uuid' =>CakeText::uuid(),
-                    'name' => $name,
-                    'local' => $local,
-                    'created_by' => $user_id
-            );
+            $organisation = [
+                'name' => $name,
+                'local' => $local,
+                'created_by' => $userId,
+            ];
             $this->save($organisation);
             return $this->id;
         }
@@ -292,7 +318,7 @@ class Organisation extends AppModel
         $success = true;
         foreach ($this->organisationAssociations as $model => $data) {
             foreach ($data['fields'] as $field) {
-                if ($dataSource == 'Database/Mysql') {
+                if ($dataSource == 'Database/Mysql' || $dataSource == 'Database/MysqlObserver') {
                     $sql = 'SELECT `id` FROM `' . $data['table'] . '` WHERE `' . $field . '` = "' . $currentOrg['Organisation']['id'] . '"';
                 } elseif ($dataSource == 'Database/Postgres') {
                     $sql = 'SELECT "id" FROM "' . $data['table'] . '" WHERE "' . $field . '" = "' . $currentOrg['Organisation']['id'] . '"';
@@ -303,13 +329,13 @@ class Organisation extends AppModel
                     if (!empty($dataMoved['values_changed'][$model][$field])) {
                         $this->Log->create();
                         try {
-                            if ($dataSource == 'Database/Mysql') {
+                            if ($dataSource == 'Database/Mysql' || $dataSource == 'Database/MysqlObserver') {
                                 $sql = 'UPDATE `' . $data['table'] . '` SET `' . $field . '` = ' . $targetOrg['Organisation']['id'] . ' WHERE `' . $field . '` = ' . $currentOrg['Organisation']['id'] . ';';
                             } elseif ($dataSource == 'Database/Postgres') {
                                 $sql = 'UPDATE "' . $data['table'] . '" SET "' . $field . '" = ' . $targetOrg['Organisation']['id'] . ' WHERE "' . $field . '" = ' . $currentOrg['Organisation']['id'] . ';';
                             }
                             $result = $this->query($sql);
-                            if ($dataSource == 'Database/Mysql') {
+                            if ($dataSource == 'Database/Mysql' || $dataSource == 'Database/MysqlObserver') {
                                 $sql = 'UPDATE `' . $data['table'] . '` SET `' . $field . '` = ' . $currentOrg['Organisation']['id'] . ' WHERE `id` IN (' . implode(',', $dataMoved['values_changed'][$model][$field]) . ');';
                             } elseif ($dataSource == 'Database/Postgres') {
                                 $sql = 'UPDATE "' . $data['table'] . '" SET "' . $field . '" = ' . $currentOrg['Organisation']['id'] . ' WHERE "id" IN (' . implode(',', $dataMoved['values_changed'][$model][$field]) . ');';
@@ -387,32 +413,152 @@ class Organisation extends AppModel
         return (empty($org)) ? false : $org[$this->alias];
     }
 
-    public function attachOrgsToEvent($event, $fields)
+    /**
+     * @param array $event
+     * @param array $fields
+     * @return array
+     */
+    public function attachOrgs($data, $fields, $scope = 'Event')
     {
-        if (empty($this->__orgCache[$event['Event']['orgc_id']])) {
-            $temp = $this->find('first', array(
-                'conditions' => array('id' => $event['Event']['orgc_id']),
+        $toFetch = [];
+        if (!isset($this->__orgCache[$data[$scope]['orgc_id']])) {
+            $toFetch[] = $data[$scope]['orgc_id'];
+        }
+        if (!isset($this->__orgCache[$data[$scope]['org_id']]) && $data[$scope]['org_id'] != $data[$scope]['orgc_id']) {
+            $toFetch[] = $data[$scope]['org_id'];
+        }
+        if (!empty($toFetch)) {
+            $orgs = $this->find('all', array(
+                'conditions' => array('id' => $toFetch),
                 'recursive' => -1,
                 'fields' => $fields
             ));
-            if (!empty($temp)) {
-                $temp = $temp[$this->alias];
+            foreach ($orgs as $org) {
+                $this->__orgCache[$org[$this->alias]['id']] = $org[$this->alias];
             }
-            $this->__orgCache[$event['Event']['orgc_id']] = $temp;
         }
-        $event['Orgc'] = $this->__orgCache[$event['Event']['orgc_id']];
-        if (empty($this->__orgCache[$event['Event']['org_id']])) {
-            $temp = $this->find('first', array(
-                'conditions' => array('id' => $event['Event']['org_id']),
+        $data['Orgc'] = $this->__orgCache[$data[$scope]['orgc_id']];
+        $data['Org'] = $this->__orgCache[$data[$scope]['org_id']];
+        return $data;
+    }
+
+    public function getOrgIdsFromMeta($metaConditions)
+    {
+        $orgIds = $this->find('list', array(
+            'conditions' => $metaConditions,
+            'fields' => array('id'),
+            'recursive' => -1
+        ));
+        if (empty($orgIds)) {
+            return array(-1);
+        }
+        return array_values($orgIds);
+    }
+
+    public function checkDesiredOrg($suggestedOrg, $registration)
+    {
+        if ($suggestedOrg !== false && $suggestedOrg !== -1) {
+            $conditions = array();
+            if (!empty($registration['Inbox']['data']['org_uuid'])) {
+                $conditions = array('Organisation.uuid' => $registration['Inbox']['data']['org_uuid']);
+            } else if (!empty($registration['Inbox']['data']['org_name'])) {
+                $conditions = array('Organisation.name' => $registration['Inbox']['data']['org_name']);
+            } else {
+                $domain = explode('@', $registration['Inbox']['data']['email'])[1];
+                $conditions = array('LOWER(Organisation.name)' => strtolower($domain));
+            }
+            $identifiedOrg = $this->User->Organisation->find('first', array(
                 'recursive' => -1,
-                'fields' => $fields
+                'fields' => array('id', 'name', 'local'),
+                'conditions' => $conditions
             ));
-            if (!empty($temp)) {
-                $temp = $temp[$this->alias];
+            if (empty($identifiedOrg)) {
+            $suggestedOrg = -1;
+            } else if (!empty($suggestedOrg) && $suggestedOrg[0] !== $identifiedOrg['Organisation']['id']) {
+                $suggestedOrg = false;
+            } else {
+                $suggestedOrg = array($identifiedOrg['Organisation']['id'], $identifiedOrg['Organisation']['name'], $identifiedOrg['Organisation']['local']);
             }
-            $this->__orgCache[$event['Event']['org_id']] = $temp;
         }
-        $event['Org'] = $this->__orgCache[$event['Event']['org_id']];
-        return $event;
+        return $suggestedOrg;
+    }
+
+    /**
+     * Hide organisation view from users if they haven't yet contributed data and Security.hide_organisation_index_from_users is enabled
+     *
+     * @param array $user
+     * @param int $orgId
+     * @return bool
+     */
+    public function canSee(array $user, $orgId)
+    {
+        if ($user['org_id'] == $orgId) {
+            return true; // User can see his own org.
+        }
+        if (!$user['Role']['perm_sharing_group'] && Configure::read('Security.hide_organisation_index_from_users')) {
+            // Check if there is event from given org that can current user see
+            $eventConditions = $this->Event->createEventConditions($user);
+            $eventConditions['AND']['Event.orgc_id'] = $orgId;
+            $event = $this->Event->find('first', array(
+                'fields' => array('Event.id'),
+                'recursive' => -1,
+                'conditions' => $eventConditions,
+            ));
+            if (empty($event)) {
+                $proposalConditions = $this->Event->ShadowAttribute->buildConditions($user);
+                $proposalConditions['AND']['ShadowAttribute.org_id'] = $orgId;
+                $proposal = $this->Event->ShadowAttribute->find('first', array(
+                    'fields' => array('ShadowAttribute.id'),
+                    'recursive' => -1,
+                    'conditions' => $proposalConditions,
+                    'contain' => ['Event', 'Attribute'],
+                ));
+                if (empty($proposal)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    private function getCountryGalaxyCluster()
+    {
+        static $list;
+        if (!$list) {
+            $file = new File(APP . '/files/misp-galaxy/clusters/country.json');
+            if ($file->exists()) {
+                $list = $this->jsonDecode($file->read())['values'];
+                $file->close();
+            } else {
+                $this->log("MISP Galaxy are not updated, countries will not be available.", LOG_WARNING);
+                $list = [];
+            }
+        }
+        return $list;
+    }
+
+    /**
+     * @param string $countryName
+     * @return string|null
+     */
+    public function getCountryCode($countryName)
+    {
+        foreach ($this->getCountryGalaxyCluster() as $country) {
+            if ($country['description'] === $countryName) {
+                return $country['meta']['ISO'];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * @return string[]
+     */
+    public function getCountries()
+    {
+        $countries = array_column($this->getCountryGalaxyCluster(), 'description');
+        sort($countries);
+        array_unshift($countries, 'Internation');
+        return $countries;
     }
 }

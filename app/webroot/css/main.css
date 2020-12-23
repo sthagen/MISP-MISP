@@ -4,9 +4,10 @@ body {
 }
 
 #topBar {
-     height:42px;
-     width:100%;
-     min-width:1300px;
+    height:42px;
+    width:100%;
+    min-width:1300px;
+    z-index: 20;
 }
 
 input[type="file"] {
@@ -17,8 +18,16 @@ button .full-width {
   width:100%;
 }
 
+.buttonResultField {
+    padding-bottom:10px;
+}
+
 .bottom-buffer {
     margin-bottom:10px;
+}
+
+form button.btn[disabled] {
+    cursor: not-allowed;
 }
 
 /*.close{
@@ -183,6 +192,13 @@ div.actions {
   width:170px;
 }
 
+div.menuless-form {
+    padding: 10px;
+    padding-bottom:40px;
+    margin: 0 auto;
+    width:550px;
+}
+
 
 div.actions h3 {
   padding-top:0;
@@ -295,6 +311,40 @@ td.highlight3 {
     background-color: red !important;
     color: #ffffff !important;
 
+}
+
+table.table-striped > tbody > tr.objectAddFieldTr > td {
+    position: absolute;
+    background-color: #ffffff00;
+    height: 0;
+}
+
+table.table-striped > tbody > tr > td > span.objectAddField {
+    padding: 0px;
+    line-height: normal;
+    display: inline-block;
+    position: relative;
+    top: -19px;
+    left: -10px;
+    color: white;
+    background-color: #1369a0;
+    border: 0px;
+    border-radius: 15px;
+    height: 16px;
+    width: 16px;
+    text-align: center;
+}
+
+table.table-striped > tbody > tr > td > span.objectAddField:before {
+    left: 2px;
+    height: 12px;
+    width: 12px;
+    line-height: 16px;
+}
+
+.table-striped tbody > tr > td > span.objectAddField:hover {
+    transform: scale(1.7);
+    cursor: pointer;
 }
 
 tr.highlightBlueSides {
@@ -876,6 +926,58 @@ a.proposal_link_red:hover {
     border: 0;
 }
 
+.immutableAttributeDescription:before {
+    background: rgba(255, 255, 255, 0);
+    content: '';
+    margin-right: 5px;
+    margin-left: 2px;
+    border-left: 1px solid;
+    border-bottom: 1px solid;
+    height: 10px;
+    width: 5px;
+    position: relative;
+    display: block;
+    float: left;
+}
+
+#eventreport_div {
+    position: relative;
+    margin-top: 20px;
+    padding: 35px 15px 0px 15px;
+    background-color: #fff;
+    border: 1px solid #ddd;
+    border-radius: 3px;
+}
+
+#eventreport_div > .report-title-section {
+    position: absolute;
+    top: -1px;
+    left: -1px;
+    padding: 3px 7px;
+    font-weight: bold;
+    background-color: #f5f5f5;
+    border: 1px solid #ddd;
+    color: #6b6b6b;
+    border-radius: 3px 0 3px 0;
+}
+
+.modal-body-long {
+    max-height: 600px;
+}
+
+.modal-xl {
+    width: 1000px;
+    margin-left: -500px;
+}
+
+.modal-body-xl {
+    max-height: 70vh;
+}
+
+.modal-body-lg {
+    max-height: 60vh;
+}
+
 .ajax_popover_form {
     display:none;
     width: 700px;
@@ -886,6 +988,18 @@ a.proposal_link_red:hover {
     border-radius: 11px 11px 10px 10px;
     box-shadow: 4px 4px 4px #333;
     z-index:5;
+}
+
+.modal.modal-lg {
+    width: 60%;
+    left: 20%;
+    margin-left: 0px;
+}
+
+.modal.modal-xl {
+    width: 90%;
+    left: 5%;
+    margin-left: 0px;
 }
 
 .ajax_popover_form_large {
@@ -938,7 +1052,7 @@ a.proposal_link_red:hover {
     border-radius: 10px 10px 0px 0px;
     padding-left:10px;
     margin-bottom:0px;
-    width:690px;
+    width:calc(100% - 10px);
     background-color:black;
     color:white;
     font-size: 21px;
@@ -972,14 +1086,16 @@ a.proposal_link_red:hover {
     height:120px !important;
 }
 
-.ajax_popover_form .add_attribute_fields {
+.ajax_fieldset, .ajax_popover_form .add_attribute_fields {
     padding-left:10px;
+    padding-right:10px;
 }
 
 .hover_enrichment_text {
-    border:0px;
-    background-color:transparent;
-    display:inline;
+    border: 0;
+    background-color: transparent;
+    display: inline;
+    padding: 0;
 }
 
 .hover_enrichment_title {
@@ -1032,6 +1148,16 @@ a.pill-pre-picker {
     height: 10px;
     width: 5px;
     position: absolute;
+}
+
+div.generic-picker-wrapper > div.generic-picker-embeded-block {
+    margin-left: 15px;
+    margin-top: -12px;
+    display: inline-block;
+}
+
+div.generic-picker-embeded-block legend {
+    margin-bottom: 0px;
 }
 
 .generic-picker-item-element-check {
@@ -1176,7 +1302,8 @@ span.success {
     bottom:-17px;
     background-color: #fff;
     position:absolute;
-    z-index:100;
+    z-index:10;
+    color: #333;
 }
 
 .inline-input-active {
@@ -1193,7 +1320,9 @@ span.success {
 
 .inline-input-button span {
     display:block;
-    margin: 0 auto;
+    margin-top: 2px;
+    text-align: center;
+    font-size: 13px;
 }
 
 .inline-input-accept {
@@ -1660,6 +1789,7 @@ span.success {
     width:100%;
     line-height:30px;
     border-top:1px solid black;
+    cursor: pointer;
 }
 
 .templateChoiceButton:hover {
@@ -1890,12 +2020,12 @@ a.discrete {
 .warning_container {
     border: 1px solid red;
     border-radius: 7px;
-    box-shadow: 0px 0px 6px #B2B2B2;
-    padding-left:10px;
-    padding-right:10px;
-    padding-bottom:10px;
+    box-shadow: 0 0 6px #B2B2B2;
+    padding: 0 10px 10px 10px;
     width: 100%;
     height: 100%;
+    box-sizing: border-box;
+    margin-top: 15px;
 }
 
 .info_container {
@@ -2214,6 +2344,17 @@ tr.redRow td, .redElement {
     border-top:0px !important;
 }
 
+tr.redRow td a, tr.redRow td a:hover,
+tr.darkOrangeRow td a, tr.darkOrangeRow td a:hover,
+tr.blueRow td a, tr.blueRow td a:hover {
+    color: white;
+    text-decoration: underline;
+}
+
+a.fa, a.fas, a.fa:hover, a.fas:hover {
+    text-decoration: none !important;
+}
+
 .blank_table_row {
     height: 10px;
 }
@@ -2244,7 +2385,7 @@ table tr:hover .down-expand-button {
 }
 
 .strikethrough {
-    text-decoration: line-through;
+    text-decoration: line-through !important;
 }
 
 .highlighted_node {
@@ -2296,6 +2437,23 @@ table tr:hover .down-expand-button {
 .label-icon {
     left: 5px;
     position: relative;
+}
+
+.nanosec-div {
+    font-weight:bold;
+    position: relative;
+    width: 100%;
+    text-align: center;
+    top: -5px;
+}
+
+.larger-input-field {
+    width: 270px !important;
+}
+
+.precision-tool {
+    margin-left: 10px;
+    display: inline-block;
 }
 
 .fa-as-icon {
@@ -2393,4 +2551,139 @@ table tr:hover .down-expand-button {
 
 #notice_message {
    margin: 10px;
+}
+
+.alert form {
+    margin: 0 0;
+}
+
+.tag-conflict-notice {
+    margin: 5px 0px;
+    padding-right: 14px;
+    position: relative;
+}
+
+.tag-conflict-notice div.text-container {
+    overflow: auto;
+}
+
+.attributeTagContainer .tag-conflict-notice {
+    max-width: 350px;
+    overflow: auto;
+}
+
+.tag-conflict-notice .apply_css_arrow {
+    display: inline-block;
+    padding: 0px 6px;
+}
+
+.tag-conflict-notice i.icon {
+    position: absolute;
+    padding: 3px;
+    right: 0px;
+    top: 0px;
+    background-color: #3b3b3b;
+    color: white;
+    border-radius: 3px;
+}
+
+.fork-cluster-preview {
+    display: inline-block;
+    position: absolute;
+    right: 0px;
+    top: 100px;
+    max-width: 400px;
+}
+
+.widgetTitle {
+    font-weight: bold;
+    color: #0088cc;
+    width: 100%;
+    font-size: 125%;
+    margin:5px;
+}
+
+.grid-stack-item-content {
+    display: flex;
+    flex-direction: column;
+}
+
+.widgetContent, .widgetContentInner, .widgetContentInner > div {
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1;
+}
+
+/* Threat levels */
+.threat-level-high::before, .threat-level-medium::before, .threat-level-low::before, .threat-level-undefined::before {
+    font-family: 'Font Awesome 5 Free';
+    font-weight: 900;
+    -moz-osx-font-smoothing: grayscale;
+    -webkit-font-smoothing: antialiased;
+    display: inline-block;
+    font-style: normal;
+    font-variant: normal;
+    text-rendering: auto;
+    line-height: 1;
+    padding-right: .3em;
+}
+
+.threat-level-high::before {
+    content: "\f102";
+    color: rgb(192,0,0);
+}
+
+.threat-level-medium::before {
+    content: "\f068";
+    color: #3465a4;
+}
+
+.threat-level-low::before {
+    content: "\f103";
+    color: rgb(35,120,40);
+}
+
+.threat-level-undefined::before {
+    content: "\f128";
+    color: gray;
+}
+
+#UserGpgkey, #UserCertifPublic {
+    font-family: Monaco, Menlo, Consolas, "Courier New", monospace;
+    font-size: 100%;
+    width: 45em;
+}
+
+.authkey {
+    font-family: Monaco, Menlo, Consolas, "Courier New", monospace;
+    font-size: 11px;
+}
+
+/*
+ Make user edit checkboxes nicer
+ */
+.user-edit-checkboxes div.input {
+    float: none;
+    width: inherit;
+    margin-top: 3px;
+}
+
+.user-edit-checkboxes .checkbox input[type="checkbox"] {
+    margin-top: 4px;
+}
+
+.user-edit-checkboxes label {
+    display: inline;
+}
+
+a.orgImg {
+    background-repeat: no-repeat;
+    background-size: 20px;
+    padding-left: 25px;
+    padding-top: 3px;
+    padding-bottom: 3px;
+}
+
+.misp-error-container {
+    margin: 0 20px;
 }

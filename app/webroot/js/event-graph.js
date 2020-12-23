@@ -766,7 +766,7 @@ class EventGraph {
                     group: group,
                     mass: 5,
                 };
-                if (node.type == 'attachment') {
+                if (node.type == 'attachment' && isPicture(node.label)) {
                     // fetch picture via attributes/viewPicture
                     node_conf.group = 'attribute_image';
                     node_conf.size = $('#slider_display_picture_size').val();
@@ -1018,7 +1018,7 @@ class EventGraph {
                             color: getTextColour(parent_color)
                         }
                     };
-                    if (attr.type == 'attachment') {
+                    if (attr.type == 'attachment'  && isPicture(attr.value)) {
                         // fetch picture via attributes/viewPicture
                         node.group = 'obj_relation_image';
                         node.size = $('#slider_display_picture_size').val();
@@ -1089,6 +1089,11 @@ class EventGraph {
 
                 // Do not link already connected nodes
                 if (that.network.getConnectedEdges(cur_id).length > 0) {
+                    if (nodeData['unreferenced'] !== undefined) {
+                        that.nodes.remove(nodeData.id);
+                        delete nodeData['unreferenced'];
+                        that.nodes.add(nodeData);
+                    }
                     return;
                 }
 
@@ -1412,7 +1417,7 @@ class DataHandler {
             var extended_text = dataHandler.extended_event ? "extended:1" : "";
             eventGraph.canDrawHull = false;
             $.ajax({
-                url: "/events/"+dataHandler.get_scope_url()+"/"+scope_id+"/"+extended_text+"/event.json",
+                url: baseurl+"/events/"+dataHandler.get_scope_url()+"/"+scope_id+"/"+extended_text+"/event.json",
                 dataType: 'json',
                 type: 'post',
                 contentType: 'application/json',
@@ -1457,13 +1462,13 @@ class DataHandler {
     }
 
     fetch_reference_data(rel_uuid, callback) {
-        $.getJSON( "/events/getReferenceData/"+rel_uuid+"/reference.json", function( data ) {
+        $.getJSON(baseurl + "/events/getReferenceData/"+rel_uuid+"/reference.json", function( data ) {
             callback(data);
         });
     }
 
     fetch_objects_template() {
-        return $.getJSON( "/events/getObjectTemplate/templates.json", function( data ) {
+        return $.getJSON(baseurl + "/events/getObjectTemplate/templates.json", function( data ) {
             for (var i in data) {
                 var template = data[i].ObjectTemplate;
                 var requiredFields;
@@ -1498,7 +1503,7 @@ class DataHandler {
     }
 
     fetch_graph_history(callback) {
-        $.getJSON( "/eventGraph/view/"+scope_id, function( history ) {
+        $.getJSON(baseurl + "/eventGraph/view/"+scope_id, function( history ) {
             var history_formatted = [];
             var network_previews = [];
             history.forEach(function(item) {
@@ -1577,7 +1582,7 @@ class MispInteraction {
             return;
         }
         var edgeFromId = edgeData.from.startsWith('o-') ? edgeData.from.substr(2) : edgeData.from;
-        genericPopup('/objectReferences/add/'+edgeFromId, '#popover_form', function() {
+        genericPopup(baseurl+'/objectReferences/add/'+edgeFromId, '#popover_form', function() {
             $('#ObjectReferenceReferencedUuid').val(uuid);
             objectReferenceInput();
         });
@@ -1599,7 +1604,7 @@ class MispInteraction {
         dataHandler.fetch_reference_data(rel_uuid, function(data) {
             data = data[0].ObjectReference;
             var uuid = data.referenced_uuid;
-            genericPopup('/objectReferences/add/'+data.object_id, '#popover_form', function() {
+            genericPopup(baseurl + '/objectReferences/add/'+data.object_id, '#popover_form', function() {
                 $('#targetSelect').val(uuid);
                 $('#ObjectReferenceComment').val(data.comment);
                 $('#ObjectReferenceRelationshipTypeSelect').val(data.relationship_type);
@@ -1633,7 +1638,7 @@ class MispInteraction {
             },
             {
                 text: "Add an Attribute",
-                onclick: "simplePopup('/attributes/add/"+scope_id+"');"
+                onclick: "simplePopup('"+baseurl+"/attributes/add/"+scope_id+"');"
             },
         ]);
     }
@@ -1657,9 +1662,9 @@ class MispInteraction {
         var group = nodes.get(id).group;
         id = id.startsWith('o-') ? id.substr(2) : id;
         if (group.slice(0, 9) == 'attribute') {
-            simplePopup('/attributes/edit/'+id);
+            simplePopup(baseurl + '/attributes/edit/' + id);
         } else if (group == 'object') {
-            window.location = '/objects/edit/'+id;
+            window.location = baseurl + '/objects/edit/' + id;
         }
     }
 
@@ -1670,7 +1675,7 @@ class MispInteraction {
 
     delete_saved_network(data) {
         var network_id = data[0];
-        var url = "/" + "eventGraph" + "/" + "delete" + "/" + network_id;
+        var url = baseurl + "/" + "eventGraph" + "/" + "delete" + "/" + network_id;
         $.get(url, function(data) {
             openPopup("#confirmation_box");
             $("#confirmation_box").html(data);
@@ -1722,7 +1727,7 @@ class MispInteraction {
     }
 
     networkFetchForm(type, event_id, network_id, callback) {
-        var url = '/' + 'EventGraph' + '/' + 'add' + '/' + event_id;
+        var url = baseurl + '/' + 'EventGraph' + '/' + 'add' + '/' + event_id;
         $.ajax({
             beforeSend: function(XMLHttpRequest) {
                 $('.loading').show();
@@ -2100,7 +2105,7 @@ function enable_interactive_graph() {
         eventGraph = new EventGraph(network_options, nodes, edges);
 
         $(document).on("keydown", function(evt) {
-            if (evt.target !== undefined && $(evt.target).is('input')) {
+            if (evt.target !== undefined && ($(evt.target).is('input') || $(evt.target).is('textarea'))) {
                 return;
             }
             switch(evt.keyCode) {
@@ -2496,3 +2501,10 @@ function global_processProperties(clusterOptions, childNodes) {
     that.clusters.push({id:'cluster:' + that.cluster_index, scale: that.cur_scale, group: clusterOptions.group});
     return clusterOptions;
 }
+
+function isPicture(filename) {
+    var extension = filename.split('.').pop()
+    var validExtensions = ['jpg', 'jpeg', 'png', 'gif']
+    return validExtensions.includes(extension)
+}
+

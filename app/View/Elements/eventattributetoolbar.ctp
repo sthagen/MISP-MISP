@@ -49,10 +49,11 @@
                 'children' => array(
                     array(
                         'id' => 'create-button',
-                        'title' => __('Add attribute'),
+                        'title' => $possibleAction === 'attribute' ? __('Add attribute') : __('Add proposal'),
                         'fa-icon' => 'plus',
-                        'onClick' => 'clickCreateButton',
-                        'onClickParams' => array($event['Event']['id'], $possibleAction)
+                        //'onClick' => 'clickCreateButton',
+                        'onClick' => 'openGenericModal',
+                        'onClickParams' => array('/' . $possibleAction . 's/add/' . h($event['Event']['id']))
                     ),
                     array(
                         'id' => 'multi-edit-button',
@@ -178,6 +179,15 @@
                         'onClickParams' => array($urlHere, 'includeDecayScore')
                     ),
                     array(
+                        'id' => 'show_attribute_sightingdb',
+                        'title' => __('Show SightingDB lookup results'),
+                        'fa-icon' => 'binoculars',
+                        'text' => __('SightingDB'),
+                        'active' => empty($includeSightingdb) ? false : true,
+                        'onClick' => 'toggleBoolFilter',
+                        'onClickParams' => array($urlHere, 'includeSightingdb')
+                    ),
+                    array(
                         'id' => 'show_attribute_context',
                         'title' => __('Show attribute context fields'),
                         'fa-icon' => 'info-circle',
@@ -219,7 +229,7 @@
                 'type' => 'search',
                 'fa-icon' => 'search',
                 'placeholder' => __('Enter value to search'),
-                'data' => '',
+                'value' => isset($this->passedArgs['searchFor']) ? $this->passedArgs['searchFor'] : null,
                 'cancel' => array(
                     'fa-icon' => 'times',
                     'title' => __('Remove filters'),
@@ -231,4 +241,3 @@
     );
     echo $this->element('/genericElements/ListTopBar/scaffold', array('data' => $data));
     echo $this->element('/Events/View/eventFilteringQueryBuilder');
-?>

@@ -1,9 +1,14 @@
 <?php
-
 App::uses('AppModel', 'Model');
 App::uses('Folder', 'Utility');
 App::uses('File', 'Utility');
+App::uses('AttachmentTool', 'Tools');
+App::uses('ComplexTypeTool', 'Tools');
 
+/**
+ * @property Event $Event
+ * @property Attribute $Attribute
+ */
 class ShadowAttribute extends AppModel
 {
     public $combinedKeys = array('event_id', 'category', 'type');
@@ -54,7 +59,6 @@ class ShadowAttribute extends AppModel
     // explanations of certain fields to be used in various views
     public $fieldDescriptions = array(
             'signature' => array('desc' => 'Is this attribute eligible to automatically create an IDS signature (network IDS or host IDS) out of it ?'),
-            //'private' => array('desc' => 'Prevents upload of this single Attribute to other CyDefSIG servers', 'formdesc' => 'Prevents upload of <em>this single Attribute</em> to other CyDefSIG servers.<br/>Used only when the Event is NOT set as Private')
     );
 
     // if these then a category my have upload to be zipped
@@ -118,35 +122,38 @@ class ShadowAttribute extends AppModel
         ),
         'to_ids' => array(
             'boolean' => array(
-                'rule' => array('boolean'),
+                'rule' => 'boolean',
                 'required' => false,
             ),
         ),
         'uuid' => array(
             'uuid' => array(
-                'rule' => array('custom', '/^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}$/'),
-                'message' => 'Please provide a valid UUID'
+                'rule' => 'uuid',
+                'message' => 'Please provide a valid RFC 4122 UUID'
             ),
         ),
         'proposal_to_delete' => array(
-                'boolean' => array(
-                        'rule' => array('boolean'),
-                ),
+            'boolean' => array(
+                'rule' => 'boolean',
+            ),
         ),
+        'first_seen' => array(
+            'rule' => array('datetimeOrNull'),
+            'required' => false,
+            'message' => array('Invalid ISO 8601 format')
+        ),
+        'last_seen' => array(
+            'rule' => array('datetimeOrNull'),
+            'required' => false,
+            'message' => array('Invalid ISO 8601 format')
+        )
     );
 
     public function __construct($id = false, $table = null, $ds = null)
     {
         parent::__construct($id, $table, $ds);
-        $this->virtualFields = Set::merge($this->virtualFields, array(
-            //'distribution' => 'IF (Attribute.private=true, "Your organization only", IF (Attribute.cluster=true, "This Community-only", "All communities"))',
-            //'distribution' => 'IF (ShadowAttribute.private=true AND ShadowAttribute.cluster=false, "Your organization only", IF (ShadowAttribute.private=true AND ShadowAttribute.cluster=true, "This server-only", IF (ShadowAttribute.private=false AND ShadowAttribute.cluster=true, "This Community-only", IF (ShadowAttribute.communitie=true, "Connected communities" , "All communities"))))',
-        ));
-        $this->fieldDescriptions = Set::merge($this->fieldDescriptions, array(
-            //'distribution' => array('desc' => 'This fields indicates the intended distribution of the attribute (same as when adding an event, see Add Event)'),
-        ));
-        $this->categoryDefinitions = $this->Event->Attribute->categoryDefinitions;
-        $this->typeDefinitions = $this->Event->Attribute->typeDefinitions;
+        $this->categoryDefinitions = $this->Attribute->categoryDefinitions;
+        $this->typeDefinitions = $this->Attribute->typeDefinitions;
     }
 
     // The Associations below have been created with all possible keys, those that are not needed can be removed
@@ -177,6 +184,9 @@ class ShadowAttribute extends AppModel
         if ($this->data['ShadowAttribute']['deleted']) {
             $this->__beforeDeleteCorrelation($this->data['ShadowAttribute']);
         }
+
+        // convert into utc and micro sec
+        $this->data = $this->Attribute->ISODatetimeToUTC($this->data, $this->alias);
         return true;
     }
 
@@ -194,7 +204,7 @@ class ShadowAttribute extends AppModel
         if (isset($sa['ShadowAttribute'])) {
             $sa = $sa['ShadowAttribute'];
         }
-        if (in_array($sa['type'], $this->Event->Attribute->nonCorrelatingTypes)) {
+        if (in_array($sa['type'], $this->Attribute->nonCorrelatingTypes)) {
             return;
         }
         $this->ShadowAttributeCorrelation = ClassRegistry::init('ShadowAttributeCorrelation');
@@ -205,14 +215,14 @@ class ShadowAttribute extends AppModel
             $correlatingValues[] = $sa['value2'];
         }
         foreach ($correlatingValues as $k => $cV) {
-            $correlatingAttributes[$k] = $this->Event->Attribute->find('all', array(
+            $correlatingAttributes[$k] = $this->Attribute->find('all', array(
                     'conditions' => array(
                             'AND' => array(
                                     'OR' => array(
                                             'Attribute.value1' => $cV,
                                             'Attribute.value2' => $cV
                                     ),
-                                    'Attribute.type !=' => $this->Event->Attribute->nonCorrelatingTypes,
+                                    'Attribute.type !=' => $this->Attribute->nonCorrelatingTypes,
                                     'Attribute.deleted' => 0,
                                     'Attribute.event_id !=' => $sa['event_id']
                             ),
@@ -253,24 +263,7 @@ class ShadowAttribute extends AppModel
         if (isset($this->data['ShadowAttribute']['deleted']) && $this->data['ShadowAttribute']['deleted']) {
             $sa = $this->find('first', array('conditions' => array('ShadowAttribute.id' => $this->data['ShadowAttribute']['id']), 'recursive' => -1, 'fields' => array('ShadowAttribute.id', 'ShadowAttribute.event_id', 'ShadowAttribute.type')));
             if ($this->typeIsAttachment($sa['ShadowAttribute']['type'])) {
-                // only delete the file if it exists
-                if ($this->attachmentDirIsS3()) {
-                    $s3 = $this->getS3Client();
-                    $s3->delete('shadow' . DS . $sa['ShadowAttribute']['event_id'] . DS . $sa['ShadowAttribute']['id']);
-                } else {
-                    $attachments_dir = Configure::read('MISP.attachments_dir');
-                    if (empty($attachments_dir)) {
-                        $my_server = ClassRegistry::init('Server');
-                        $attachments_dir = $my_server->getDefaultAttachments_dir();
-                    }
-                    $filepath = $attachments_dir . DS . 'shadow' . DS . $sa['ShadowAttribute']['event_id'] . DS . $sa['ShadowAttribute']['id'];
-                    $file = new File($filepath);
-                    if ($file->exists()) {
-                        if (!$file->delete()) {
-                            throw new InternalErrorException('Delete of file attachment failed. Please report to administrator.');
-                        }
-                    }
-                }
+                $this->loadAttachmentTool()->deleteShadow($sa['ShadowAttribute']['event_id'], $sa['ShadowAttribute']['id']);
             }
         } else {
             if (isset($this->data['ShadowAttribute']['type']) && $this->typeIsAttachment($this->data['ShadowAttribute']['type']) && !empty($this->data['ShadowAttribute']['data'])) {
@@ -295,24 +288,7 @@ class ShadowAttribute extends AppModel
         // delete attachments from the disk
         $this->read(); // first read the attribute from the db
         if ($this->typeIsAttachment($this->data['ShadowAttribute']['type'])) {
-            // only delete the file if it exists
-            if ($this->attachmentDirIsS3()) {
-                $s3 = $this->getS3Client();
-                $s3->delete('shadow' . DS . $this->data['ShadowAttribute']['event_id'] . DS . $this->data['ShadowAttribute']['id']);
-            } else {
-                $attachments_dir = Configure::read('MISP.attachments_dir');
-                if (empty($attachments_dir)) {
-                    $my_server = ClassRegistry::init('Server');
-                    $attachments_dir = $my_server->getDefaultAttachments_dir();
-                }
-                $filepath = $attachments_dir . DS . 'shadow' . DS . $this->data['ShadowAttribute']['event_id'] . DS . $this->data['ShadowAttribute']['id'];
-                $file = new File($filepath);
-                if ($file->exists()) {
-                    if (!$file->delete()) {
-                        throw new InternalErrorException('Delete of file attachment failed. Please report to administrator.');
-                    }
-                }
-            }
+            $this->loadAttachmentTool()->deleteShadow($this->data['ShadowAttribute']['event_id'], $this->data['ShadowAttribute']['id']);
         }
     }
 
@@ -321,9 +297,6 @@ class ShadowAttribute extends AppModel
         parent::beforeValidate();
         // remove leading and trailing blanks
         //$this->trimStringFields(); // TODO
-        if (isset($this->data['ShadowAttribute']['value'])) {
-            $this->data['ShadowAttribute']['value'] = trim($this->data['ShadowAttribute']['value']);
-        }
 
         if (!isset($this->data['ShadowAttribute']['comment'])) {
             $this->data['ShadowAttribute']['comment'] = '';
@@ -331,6 +304,18 @@ class ShadowAttribute extends AppModel
 
         if (!isset($this->data['ShadowAttribute']['type'])) {
             return false;
+        }
+
+        // make some changes to the inserted value
+        if (isset($this->data['ShadowAttribute']['value'])) {
+            $value = trim($this->data['ShadowAttribute']['value']);
+            $value = ComplexTypeTool::refangValue($value, $this->data['ShadowAttribute']['type']);
+            $value = $this->Attribute->modifyBeforeValidation($this->data['ShadowAttribute']['type'], $value);
+            $this->data['ShadowAttribute']['value'] = $value;
+        }
+
+        if (!isset($this->data['ShadowAttribute']['org'])) {
+            $this->data['ShadowAttribute']['org'] = '';
         }
 
         if (empty($this->data['ShadowAttribute']['timestamp'])) {
@@ -342,20 +327,27 @@ class ShadowAttribute extends AppModel
             $this->data['ShadowAttribute']['proposal_to_delete'] = 0;
         }
 
-        // make some last changes to the inserted value
-        $this->data['ShadowAttribute']['value'] = $this->Event->Attribute->modifyBeforeValidation($this->data['ShadowAttribute']['type'], $this->data['ShadowAttribute']['value']);
-
         // generate UUID if it doesn't exist
         if (empty($this->data['ShadowAttribute']['uuid'])) {
             $this->data['ShadowAttribute']['uuid'] = CakeText::uuid();
+        } else {
+            $this->data['ShadowAttribute']['uuid'] = strtolower($this->data['ShadowAttribute']['uuid']);
         }
 
         if (!empty($this->data['ShadowAttribute']['type']) && empty($this->data['ShadowAttribute']['category'])) {
-            $this->data['ShadowAttribute']['category'] = $this->Event->Attribute->typeDefinitions[$this->data['ShadowAttribute']['type']]['default_category'];
+            $this->data['ShadowAttribute']['category'] = $this->Attribute->typeDefinitions[$this->data['ShadowAttribute']['type']]['default_category'];
         }
 
         // always return true, otherwise the object cannot be saved
         return true;
+    }
+
+    public function afterFind($results, $primary = false)
+    {
+        foreach ($results as $k => $v) {
+            $results[$k] = $this->Attribute->UTCToISODatetime($results[$k], $this->alias);
+        }
+        return $results;
     }
 
     public function validateTypeValue($fields)
@@ -369,95 +361,64 @@ class ShadowAttribute extends AppModel
 
     public function validCategory($fields)
     {
-        return $this->Event->Attribute->validCategory($fields);
+        return $this->Attribute->validCategory($fields);
     }
 
     public function validateAttributeValue($fields)
     {
         $value = $fields['value'];
-        return $this->Event->Attribute->runValidation($value, $this->data['ShadowAttribute']['type']);
+        return $this->Attribute->runValidation($value, $this->data['ShadowAttribute']['type']);
     }
 
     public function getCompositeTypes()
     {
-        // build the list of composite Attribute.type dynamically by checking if type contains a |
-        // default composite types
-        $compositeTypes = array('malware-sample');  // TODO hardcoded composite
-        // dynamically generated list
-        foreach (array_keys($this->typeDefinitions) as $type) {
-            $pieces = explode('|', $type);
-            if (2 == count($pieces)) {
-                $compositeTypes[] = $type;
-            }
-        }
-        return $compositeTypes;
+        return $this->Attribute->getCompositeTypes();
     }
 
     public function typeIsMalware($type)
     {
-        if (in_array($type, $this->zippedDefinitions)) {
-            return true;
-        } else {
-            return false;
-        }
+        return $this->Attribute->typeIsAttachment($type);
     }
 
     public function typeIsAttachment($type)
     {
-        if ((in_array($type, $this->zippedDefinitions)) || (in_array($type, $this->uploadDefinitions))) {
-            return true;
-        } else {
-            return false;
+        return $this->Attribute->typeIsAttachment($type);
+    }
+
+    public function base64EncodeAttachment(array $attribute)
+    {
+        try {
+            return base64_encode($this->getAttachment($attribute));
+        } catch (NotFoundException $e) {
+            $this->log($e->getMessage(), LOG_NOTICE);
+            return '';
         }
     }
 
-    public function base64EncodeAttachment($attribute)
+    public function getAttachment($attribute, $path_suffix='')
     {
-        $attachments_dir = Configure::read('MISP.attachments_dir');
-        if (empty($attachments_dir)) {
-            $my_server = ClassRegistry::init('Server');
-            $attachments_dir = $my_server->getDefaultAttachments_dir();
-        }
-
-        if ($this->attachmentDirIsS3()) {
-            $s3 = $this->getS3Client();
-            $content = $s3->download('shadow' . DS . $attribute['event_id'] . DS. $attribute['id']);
-        } else {
-            $filepath = $attachments_dir . DS . 'shadow' . DS . $attribute['event_id'] . DS. $attribute['id'];
-            $file = new File($filepath);
-            if (!$file->exists()) {
-                return '';
-            }
-            $content = $file->read();
-        }
-        return base64_encode($content);
+        return $this->loadAttachmentTool()->getShadowContent($attribute['event_id'], $attribute['id'], $path_suffix);
     }
 
     public function saveBase64EncodedAttachment($attribute)
     {
-        $attachments_dir = Configure::read('MISP.attachments_dir');
-        if (empty($attachments_dir)) {
-            $my_server = ClassRegistry::init('Server');
-            $attachments_dir = $my_server->getDefaultAttachments_dir();
+        $data = base64_decode($attribute['data']);
+        $result = $this->loadAttachmentTool()->saveShadow($attribute['event_id'], $attribute['id'], $data);
+        if ($result) {
+            $this->loadAttachmentScan()->backgroundScan(AttachmentScan::TYPE_SHADOW_ATTRIBUTE, $attribute);
         }
-        if ($this->attachmentDirIsS3()) {
-            $s3 = $this->getS3Client();
-            $decodedData = base64_decode($attribute['data']);
-            $s3->upload('shadow' . DS . $attribute['event_id'], $decodedData);
-            return true;
-        } else {
-            $rootDir = $attachments_dir . DS . 'shadow' . DS . $attribute['event_id'];
-            $dir = new Folder($rootDir, true);                      // create directory structure
-            $destpath = $rootDir . DS . $attribute['id'];
-            $file = new File($destpath, true);                      // create the file
-            $decodedData = base64_decode($attribute['data']);       // decode
-            if ($file->write($decodedData)) {                       // save the data
-                return true;
-            } else {
-                // error
-                return false;
-            }
-        }
+        return $result;
+    }
+
+    /**
+     * @param array $shadowAttribute
+     * @param string $path_suffix
+     * @return File
+     * @throws Exception
+     */
+    public function getAttachmentFile(array $shadowAttribute, $path_suffix='')
+    {
+        return $this->loadAttachmentTool()->getShadowFile($shadowAttribute['event_id'], $shadowAttribute['id'], $path_suffix);
     }
 
     public function checkComposites()
@@ -472,6 +433,12 @@ class ShadowAttribute extends AppModel
             }
         }
         return $fails;
+    }
+
+    // check whether the variable is null or datetime
+    public function datetimeOrNull($fields)
+    {
+        return $this->Attribute->datetimeOrNull($fields);
     }
 
     public function setDeleted($id)
@@ -508,22 +475,29 @@ class ShadowAttribute extends AppModel
         }
     }
 
-    public function getEventContributors($id)
+    /**
+     * @param int $eventId
+     * @return array Key is organisation ID, value is an organisation name
+     */
+    public function getEventContributors($eventId)
     {
-        $orgs = $this->find('all', array('fields' => array(
-            'DISTINCT(ShadowAttribute.org_id)'),
-            'conditions' => array('event_id' => $id),
+        $orgs = $this->find('all', array(
+            'fields' => array('DISTINCT(ShadowAttribute.org_id)'),
+            'conditions' => array('event_id' => $eventId),
             'recursive' => -1,
             'order' => false
         ));
-        $org_ids = array();
-        $this->Organisation = ClassRegistry::init('Organisation');
-        foreach ($orgs as $org) {
-            $org_ids[] = $this->Organisation->find('first', array('recursive' => -1, 'fields' => array('id', 'name'), 'conditions' => array('Organisation.id' => $org['ShadowAttribute']['org_id'])));
+        if (empty($orgs)) {
+            return [];
         }
-        return $org_ids;
-    }
 
+        $this->Organisation = ClassRegistry::init('Organisation');
+        return $this->Organisation->find('list', array(
+            'recursive' => -1,
+            'fields' => array('id', 'name'),
+            'conditions' => array('Organisation.id' => Hash::extract($orgs, "{n}.ShadowAttribute.org_id")))
+        );
+    }
 
     /**
      * Sends an email to members of the organization that owns the event
@@ -549,7 +523,7 @@ class ShadowAttribute extends AppModel
                         'contactalert' => 1,
                         'disabled' => 0
                 ),
-                'fields' => array('email', 'gpgkey', 'certif_public', 'contactalert', 'id')
+                'fields' => array('email', 'gpgkey', 'certif_public', 'contactalert', 'id', 'disabled'),
         ));
 
         $body = "Hello, \n\n";
@@ -722,19 +696,20 @@ class ShadowAttribute extends AppModel
                 $objectDistribution['(SELECT sharing_group_id FROM objects WHERE objects.id = Attribute.object_id)'] = $sgids;
                 $attributeDistribution['Attribute.sharing_group_id'] = $sgids;
             }
+            $unpublishedPrivate = Configure::read('MISP.unpublishedprivate');
             $conditions = array(
                 'AND' => array(
                     'OR' => array(
                         'Event.org_id' => $user['org_id'],
-                        'AND' => array(
-                            'OR' => array(
-                                'Event.distribution' => array(1,2,3,5),
-                                'AND '=> array(
-                                    'Event.distribution' => 4,
-                                    'Event.sharing_group_id' => $sgids,
-                                )
-                            )
-                        )
+                        ['AND' => [
+                            'Event.distribution' => array(1,2,3),
+                            $unpublishedPrivate ? ['Event.published' => 1] : [],
+                        ]],
+                        ['AND' => [
+                            'Event.distribution' => 4,
+                            'Event.sharing_group_id' => $sgids,
+                            $unpublishedPrivate ? ['Event.published' => 1] : [],
+                        ]],
                     ),
                     array(
                         'OR' => array(

@@ -1,11 +1,15 @@
 <?php $update_template_available = isset($update_template_available) ? $update_template_available : false; ?>
 <div class="<?php if (!isset($ajax) || !$ajax) echo 'form';?>">
 <?php
-    $url = ($action == 'add') ? '/objects/revise_object/add/' . $event['Event']['id'] . '/' . $template['ObjectTemplate']['id'] : '/objects/revise_object/edit/' . $event['Event']['id'] . '/' . $template['ObjectTemplate']['id'] . '/' . h($object['Object']['id']);
+    if ($action === 'add') {
+        $url = $baseurl . '/objects/revise_object/add/' . $event['Event']['id'] . '/' . $template['ObjectTemplate']['id'];
+    } else {
+        $url = $baseurl . '/objects/revise_object/edit/' . $event['Event']['id'] . '/' . $template['ObjectTemplate']['id'] . '/' . h($object['Object']['id']);
+    }
     echo $this->Form->create('Object', array('id', 'url' => $url, 'enctype' => 'multipart/form-data'));
 ?>
 <h3><?php echo ucfirst($action) . ' ' . Inflector::humanize(h($template['ObjectTemplate']['name'])) . __(' Object'); ?></h3>
-<div class="row-fluid" style="margin-bottom:10px;">
+<div id="meta-div" class="row-fluid" style="margin-bottom:10px;">
   <dl class="span8">
     <dt><?php echo __('Object Template');?></dt>
     <dd>
@@ -14,7 +18,7 @@
         if ($action == 'edit' && !$update_template_available && $newer_template_version !== false): ?>
             <a class="btn btn-mini btn-primary useCursorPointer" title="<?php echo __('Update the template of this object to the newer version: ') . h($newer_template_version) ?>" href="<?php echo $baseurl . '/objects/edit/' . h($object['Object']['id']) . '/1'; ?>">
                 <span class="fa fa-arrow-circle-up"></span>
-                <?php echo __('Update template') ?>
+                <?php echo __('Update template to v%s', h($newer_template_version)) ?>
             </a>
         <?php endif; ?>
       &nbsp;
@@ -77,6 +81,27 @@
         ));
       ?>
     </dd>
+    <?php
+        echo $this->Form->input('first_seen', array(
+                'type' => 'text',
+                'div' => 'input hidden',
+                'required' => false,
+                ));
+        echo $this->Form->input('last_seen', array(
+                'type' => 'text',
+                'div' => 'input hidden',
+                'required' => false,
+                ));
+        if ($update_template_available && $newer_template_version !== false) {
+            echo $this->Form->input('template_version', array(
+                'type' => 'text',
+                'div' => 'input hidden',
+                'required' => false,
+                'value' => $newer_template_version
+            ));
+        }
+    ?>
+    <div id="bothSeenSliderContainer"></div>
   </dl>
 </div>
 <?php
@@ -97,11 +122,11 @@
   <tr>
     <th><?php echo __('Save');?></th>
     <th><?php echo __('Name :: type');?></th>
-        <th><?php echo __('Description');?></th>
+    <th><?php echo __('Description');?></th>
     <th><?php echo __('Category');?></th>
     <th><?php echo __('Value');?></th>
     <th><?php echo __('IDS');?></th>
-        <th><?php echo __('Disable Correlation');?></th>
+    <th><?php echo __('Disable Correlation');?></th>
     <th><?php echo __('Distribution');?></th>
     <th><?php echo __('Comment');?></th>
   </tr>
@@ -114,8 +139,8 @@
         array(
           'element' => $element,
           'k' => $k,
-                'action' => $action,
-                'enabledRows' => $enabledRows
+          'action' => $action,
+          'enabledRows' => $enabledRows
         )
       );
         if ($element['multiple']):
@@ -180,7 +205,7 @@
             <?php if ($update_template_available): ?>
                 <div class="fixedRightPanelHeader useCursorPointer" style="box-shadow: 0px 0px 6px #B2B2B2;margin-bottom: 2px;width: 100%;overflow: hidden; padding: 5px;">
                     <i class="fas fa-chevron-circle-down"></i>
-                    <span style="margin-left: 5px; display: inline-block; font-size: large;"><?php echo __('Pre-update object\'s template'); ?></span>
+                    <span style="margin-left: 5px; display: inline-block; font-size: large;"><?php echo __('Current Object state on older template version'); ?></span>
                 </div>
                 <div class="row" style="max-height: 800px; max-width: 800px; overflow: auto; padding: 15px;">
                     <div style="border: 1px solid #3465a4 ; border-radius: 5px; overflow: hidden;" class="span5">
@@ -309,6 +334,7 @@
 
 
 <?php
+    echo $this->element('form_seen_input');
     if (!$ajax) {
         echo $this->element('/genericElements/SideMenu/side_menu', array('menuList' => 'event', 'menuItem' => 'addObject', 'event' => $event));
     }

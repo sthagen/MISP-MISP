@@ -1,8 +1,8 @@
-<div class="index">
+<div class="index" style="margin-bottom: 2em">
     <h2><?php echo h($title); ?></h2>
     <?php
         $event_id = $event['Event']['id'];
-        $url = '/events/handleModuleResults/' . $event_id;
+        $url = $baseurl . '/events/handleModuleResults/' . $event_id;
         echo $this->Form->create('Event', array('url' => $url, 'class' => 'mainForm'));
         $formSettings = array(
             'type' => 'hidden',
@@ -31,13 +31,15 @@
         if (empty($objects_array)) {
             echo '<p>Results from the enrichment module for this attribute are empty.</p>';
         } else {
-            $scope = join(' and ', $objects_array);
+            $scope = implode(' and ', $objects_array);
             echo '<p>Below you can see the ' . $scope . ' that are to be created from the results of the enrichment module.</p>';
             $table_data = array(array('key' => __('Event ID'), 'value' => $event_id));
             $event_metadata = $event['Event'];
             if (!empty($event_metadata['uuid'])) {
-                $table_data[] = array('key' => __('Event UUID'),
-                                      'value' => $event_metadata['uuid']);
+                $table_data[] = array(
+                    'key' => __('Event UUID'),
+                    'html' => '<span class="quickSelect">'. h($event_metadata['uuid']) . '</span>',
+                );
             }
             if (!empty($event_metadata['orgc_id']) && !empty($event_metadata['orgc_name'])) {
                 $table_data[] = array('key' => __('Event creator org'), 'html' => sprintf(
@@ -59,8 +61,7 @@
                     }
                 }
             }
-            $objects_string = $objects_count > 1 ? ' Objects)' : 'Object)';
-            $count = $attributes_count . ' (' . $objects_count . $objects_string;
+            $count = __n('%s (%s object)', '%s (%s objects)', $objects_count, $attributes_count, $objects_count);
             if (!empty($event['Tag'])) {
                 $table_data[] = array(
                     'key' => __('Tags'),
@@ -83,13 +84,14 @@
         $typesWithData = array('attachment', 'malware-sample');
         if (!empty($event['Object'])) {
     ?>
-    <table class='table table-striped table-condensed'>
+    <table class="table table-striped table-condensed">
       <tbody>
         <tr>
+          <th><?php echo __('Import');?></th>
           <th><?php echo __('Category');?></th>
           <th><?php echo __('Type');?></th>
           <th><?php echo __('Value');?></th>
-          <th><?php echo __('UUID');?></th>
+          <th class="hidden"><?php echo __('UUID');?></th>
           <th><?php echo __('Tags');?></th>
           <th><?php echo __('IDS');?></th>
           <th><?php echo __('Disable Correlation');?></th>
@@ -100,9 +102,12 @@
             $header_present = true;
             foreach ($event['Object'] as $o => $object) {
         ?>
-        <tbody class='MISPObject'>
-          <tr class='tableHighlightBorderTop borderBlue blueRow' tabindex='0'>
-            <td colspan="7">
+        <tbody class="MISPObject">
+          <tr class="tableHighlightBorderTop borderBlue blueRow" tabindex="0">
+            <td class="short" style="width:40px;text-align:center;">
+                <input type="checkbox" class="ImportMISPObject" checked />
+            </td>
+            <td colspan="6">
               <?php if(!empty($object['id'])) { ?>
               <span class="bold"><?php echo __('ID: ');?></span><span class="ObjectID"><?php echo h($object['id']); ?></span><br />
               <?php } ?>
@@ -196,12 +201,13 @@
                         $border_position = ($attribute == $last_attribute ? 'Bottom' : 'Center');
           ?>
           <tr class="ObjectAttribute tableHighlightBorder<?php echo $border_position; ?> borderBlue">
+            <td class="short" style="width:40px;text-align:center;"><input type="checkbox" class="ImportMISPObjectAttribute" checked /></td>
             <td class="ObjectCategory"><?php echo (isset($attribute['category']) ? h($attribute['category']) : ''); ?></td>
             <td class="short">
-              <span class="ObjectRelation bold"><?php echo h($attribute['object_relation']); ?></span>:
+              <span class="ObjectRelation bold"><?php echo h($attribute['object_relation']); ?></span>
               <span class="AttributeType"><?php echo h($attribute['type']); ?></span>
             </td>
-            <td class="AttributeValue limitedWidth"><?php echo h($attribute['value']); ?></td>
+            <td class="AttributeValue limitedWidth"><?= $this->element('Events/View/value_field', ['object' => $attribute]); ?></td>
             <?php
                 if (in_array($attribute['type'], $typesWithData)) {
                     if (!empty($attribute['data'])) {
@@ -212,7 +218,7 @@
                     }
                 }
             ?>
-            <td class="AttributeUuid short"><?php echo h($attribute['uuid']); ?></td>
+            <td class="AttributeUuid short hidden"><?php echo h($attribute['uuid']); ?></td>
             <td style="max-width:150px;width:10px;">
               <?php if (!empty($attribute['Tag'])) { ?>
               <span class="objectAttributeTagContainer">
@@ -264,7 +270,7 @@
                         echo '</tr>';
                     }
                 }
-                echo '<tr><td colspan="9" /></tr>';
+                echo '<tr><td colspan="9"></td></tr>';
             ?>
         </tbody>
         <?php
@@ -276,10 +282,11 @@
         <table class='table table-striped table-condensed'>
           <tbody>
             <tr>
+              <th><?php echo __('Import');?></th>
               <th><?php echo __('Category');?></th>
               <th><?php echo __('Type');?></th>
               <th><?php echo __('Value');?></th>
-              <th><?php echo __('UUID');?></th>
+              <th class="hidden"><?php echo __('UUID');?></th>
               <th><?php echo __('Tags');?></th>
               <th><?php echo __('IDS');?></th>
               <th><?php echo __('Disable Correlation');?></th>
@@ -289,14 +296,17 @@
           <?php
             }
             foreach ($event['Attribute'] as $a => $attribute) {
-                echo '<tr class="MISPAttribute">';
+          ?>
+                <tr class="MISPAttribute">
+                <td class="short" style="width:40px;text-align:center;"><input type="checkbox" class="ImportMISPAttribute" checked /></td>
+          <?php
                 foreach (array('category', 'type') as $field) {
                     $field_header = 'class="Attribute' . ucfirst($field);
                     if (isset($attribute[$field])) {
                         if (is_array($attribute[$field])) {
                             echo '<td class="short" style="width:40px;text-align:center;"><select ' . $field_header . 'Select"  style="padding:0px;height:20px;margin-bottom:0px;">';
                             foreach ($attribute[$field] as $v => $value) {
-                                echo '<option value="' . h($value) . '" ' . ($v ? '' : 'selected="selected"') . '>' . h($value) . '</option>';
+                                echo '<option value="' . h($value) . '">' . h($value) . '</option>';
                             }
                             echo '</select></td>';
                         } else {
@@ -307,7 +317,7 @@
                     }
                 }
           ?>
-          <td class="AttributeValue limitedWidth"><?php echo h($attribute['value']); ?></td>
+          <td class="AttributeValue limitedWidth"><?= $this->element('Events/View/value_field', ['object' => $attribute]); ?></td>
           <?php
                 if (in_array($attribute['type'], $typesWithData)) {
                     if (!empty($attribute['data'])) {
@@ -318,7 +328,7 @@
                     }
                 }
           ?>
-          <td class="AttributeUuid short"><?php echo h($attribute['uuid']); ?></td>
+          <td class="AttributeUuid short hidden"><?php echo h($attribute['uuid']); ?></td>
           <td style="max-width:150px;width:10px;">
             <?php if (!empty($attribute['Tag'])) { ?>
             <span class="attributeTagContainer">
@@ -373,32 +383,23 @@
         ?>
       </tbody>
     </table>
-    <span>
-      <button class="btn btn-primary" style="float:left;" onClick="moduleResultsSubmit('<?php echo h($event_id); ?>');"><?php echo __('Submit'); ?></button>
-      <a href="<?php echo $baseurl . '/events/view/' . h($event['Event']['id']); ?>" style="margin-left:10px;" class="btn btn-inverse"><?php echo __('Cancel');?></a>
-    </span>
+
+    <button class="btn btn-primary" style="float:left;" onClick="moduleResultsSubmit('<?php echo h($event_id); ?>');"><?php echo __('Submit'); ?></button>
+    <a href="<?php echo $baseurl . '/events/view/' . h($event['Event']['id']); ?>" style="margin-left:10px;" class="btn btn-inverse"><?php echo __('Cancel');?></a>
 </div>
 <script type="text/javascript">
-    $(document).ready(function() {
-      $('.AttributeDistribution').change(function() {
+    $(function() {
+      $('.AttributeDistribution, .ObjectDistribution').change(function() {
           if ($(this).val() == 4) {
               $(this).next().show();
           } else {
               $(this).next().hide();
           }
-      });
-      $('.ObjectDistribution').change(function() {
-          if ($(this).val() == 4) {
-              $(this).next().show();
-          } else {
-              $(this).next().hide();
-          }
-      });
+      }).change();
     });
 </script>
 <?php
-    if (!isset($menuItem)) {
-        $menuItem = 'freetextResults';
-    }
-    echo $this->element('/genericElements/SideMenu/side_menu', array('menuList' => 'event', 'menuItem' => $menuItem));
-?>
+if (!isset($menuItem)) {
+    $menuItem = 'freetextResults';
+}
+echo $this->element('/genericElements/SideMenu/side_menu', array('menuList' => 'event', 'menuItem' => $menuItem));

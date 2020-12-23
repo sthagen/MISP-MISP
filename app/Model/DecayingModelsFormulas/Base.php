@@ -6,8 +6,36 @@ abstract class DecayingModelBase
         return 'BONFIRE LIT';
     }
 
+
+    protected function __extractTagBasename($tagName) {
+        $pieces = array();
+        if (preg_match('/^[^:="]+:[^:="]+="[^:="]+"$/i', $tagName)) {
+            $temp = explode(':', $tagName);
+            $pieces = array_merge(array($temp[0]), explode('=', $temp[1]));
+            $pieces['complete'] = $tagName;
+            $pieces['namespace'] = $pieces[0];
+            $pieces['predicate'] = $pieces[1];
+            $pieces['2tag'] = sprintf('%s:%s', $pieces[0], $pieces[1]);
+            $pieces['base'] = sprintf('%s:%s', $pieces[0], $pieces[1]);
+        } elseif (preg_match('/^[^:="]+:[^:="]+$/i', $tagName)) {
+            $pieces = explode(':', $tagName);
+            $pieces['complete'] = $tagName;
+            $pieces['namespace'] = $pieces[0];
+            $pieces['predicate'] = $pieces[1];
+            $pieces['2tag'] = sprintf('%s:%s', $pieces[0], $pieces[1]);
+            $pieces['base'] = $pieces[0];
+        } else {
+            $pieces['complete'] = $tagName;
+            $pieces['namespace'] = '';
+            $pieces['predicate'] = '';
+            $pieces['2tag'] = '';
+            $pieces['base'] = $tagName;
+        }
+        return $pieces;
+    }
+
     // Get effective taxonomy ratio based on taxonomies attached to the attribute
-    // Basically, it adapts the ratio defined in the model to fit the actual attached tags 
+    // Basically, it adapts the ratio defined in the model to fit the actual attached tags
     protected function __getRatioScore($model, $tags)
     {
         $ratioScore = array();
@@ -17,21 +45,21 @@ abstract class DecayingModelBase
         }
         $total_score = 0.0;
         foreach ($tags as $tag) {
-            $namespace_predicate = explode('=', $tag['Tag']['name'])[0];
-            if (isset($taxonomy_base_ratio[$namespace_predicate]) && is_numeric($tag['Tag']['numerical_value'])) {
-                $total_score += floatval($taxonomy_base_ratio[$namespace_predicate]);
+            $tagBaseName = $this->__extractTagBasename($tag['Tag']['name'])['base'];
+            if (isset($taxonomy_base_ratio[$tagBaseName]) && is_numeric($tag['Tag']['numerical_value'])) {
+                $total_score += floatval($taxonomy_base_ratio[$tagBaseName]);
             }
         }
         foreach ($tags as $i => $tag) {
-            $namespace_predicate = explode('=', $tag['Tag']['name'])[0];
-            if (isset($taxonomy_base_ratio[$namespace_predicate]) && is_numeric($tag['Tag']['numerical_value'])) {
-                $ratioScore[$namespace_predicate] = floatval($taxonomy_base_ratio[$namespace_predicate]) / $total_score;
+            $tagBaseName = $this->__extractTagBasename($tag['Tag']['name'])['base'];
+            if (isset($taxonomy_base_ratio[$tagBaseName]) && is_numeric($tag['Tag']['numerical_value'])) {
+                $ratioScore[$tagBaseName] = floatval($taxonomy_base_ratio[$tagBaseName]) / $total_score;
             }
         }
         return $ratioScore;
     }
 
-    // return attribute tag with event tag matching the namespace+predicate overridden
+    // return attribute tag with event tag matching the tag basename overridden
     protected function __getPrioritisedTag($attribute)
     {
         $tags = array();
@@ -40,15 +68,15 @@ abstract class DecayingModelBase
         if (isset($attribute['EventTag'])) {
             foreach ($attribute['EventTag'] as $i => $tag) {
                 $tags[] = $tag;
-                $namespace_predicate = explode('=', $tag['Tag']['name'])[0];
-                $temp_mapping[$namespace_predicate][] = $i;
+                $tagBaseName = $this->__extractTagBasename($tag['Tag']['name'])['base'];
+                $temp_mapping[$tagBaseName][] = $i;
             }
         }
         if (isset($attribute['AttributeTag'])) {
             foreach ($attribute['AttributeTag'] as $tag) {
-                $namespace_predicate = explode('=', $tag['Tag']['name'])[0];
-                if (!empty($temp_mapping[$namespace_predicate])) { // need to override event tag
-                    foreach ($temp_mapping[$namespace_predicate] as $i => $eventtag_index) {
+                $tagBaseName = $this->__extractTagBasename($tag['Tag']['name'])['base'];
+                if (!empty($temp_mapping[$tagBaseName])) { // need to override event tag
+                    foreach ($temp_mapping[$tagBaseName] as $i => $eventtag_index) {
                         $overridden_tags[] = array(
                             'EventTag' => $tags[$eventtag_index],
                             'AttributeTag' => $tag
@@ -78,7 +106,7 @@ abstract class DecayingModelBase
         $flag_contain_matching_taxonomy = false;
         if (!empty($taxonomy_effective_ratios)) {
             foreach ($tags as $k => $tag) {
-                $taxonomy = explode('=', $tag['Tag']['name'])[0];
+                $taxonomy = $this->__extractTagBasename($tag['Tag']['name'])['base'];
                 if (isset($taxonomy_effective_ratios[$taxonomy])) {
                     $flag_contain_matching_taxonomy = true;
                     $base_score += $taxonomy_effective_ratios[$taxonomy] * $tag['Tag']['numerical_value'];
@@ -108,15 +136,25 @@ abstract class DecayingModelBase
             $all_sightings = $this->Sighting->listSightings($user, $attribute['id'], 'attribute', false, 0, true);
             if (!empty($all_sightings)) {
                 $last_sighting_timestamp = $all_sightings[0]['Sighting']['date_sighting'];
+            } elseif (!is_null($attribute['last_seen'])) {
+                $last_sighting_timestamp = (new DateTime($attribute['last_seen']))->format('U');
             } else {
-                $last_sighting_timestamp = $attribute['timestamp']; // if no sighting, take the last update time
+                $last_sighting_timestamp = $attribute['timestamp']; // if no sighting nor valid last_seen, take the last update time
             }
         }
         if ($attribute['timestamp'] > $last_sighting_timestamp) { // The attribute was modified after the last sighting
-            $last_sighting_timestamp = $attribute['timestamp'];
+            if (!is_null($attribute['last_seen'])) {
+                $last_sighting_timestamp = (new DateTime($attribute['last_seen']))->format('U');
+            } else {
+                $last_sighting_timestamp = $attribute['timestamp'];
+            }
         }
         $timestamp = time();
-        return $this->computeScore($model, $attribute, $base_score, $timestamp - $last_sighting_timestamp);
+        $scores = array(
+            'score' => $this->computeScore($model, $attribute, $base_score, $timestamp - $last_sighting_timestamp),
+            'base_score' => $base_score
+        );
+        return $scores;
     }
 
     // Compute the score for the provided attribute according to the elapsed time with the provided model

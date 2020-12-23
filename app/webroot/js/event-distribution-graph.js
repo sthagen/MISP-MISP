@@ -1,7 +1,8 @@
-var scope_id = $('#eventdistri_graph').data('event-id');
-var event_distribution = $('#eventdistri_graph').data('event-distribution');
-var event_distribution_text = $('#eventdistri_graph').data('event-distribution-text');
-var extended_text = $('#eventdistri_graph').data('extended') == 1 ? true : false;
+var $eventDistriGraph = $('#eventdistri_graph');
+var scope_id = $eventDistriGraph.data('event-id');
+var event_distribution = $eventDistriGraph.data('event-distribution');
+var event_distribution_text = $eventDistriGraph.data('event-distribution-text');
+var extended_text = $eventDistriGraph.data('extended') == 1 ? true : false;
 var spanOffset_orig = 15; // due to padding
 var payload = {};
 var distribution_chart;
@@ -386,7 +387,7 @@ function construct_piechart(data) {
 
 function fetchDistributionData(callback) {
     $.ajax({
-        url: "/events/"+"getDistributionGraph"+"/"+scope_id+"/event.json",
+        url: baseurl + "/events/"+"getDistributionGraph"+"/"+scope_id+"/event.json",
         dataType: 'json',
         type: 'post',
         contentType: 'application/json',
@@ -420,9 +421,12 @@ function drawBarChart(data) {
 }
 
 $(document).ready(function() {
-    var rightBtn = '<div style="float:right;"><span type="button" id="reloadDistributionGraph" title="Reload Distribution Graph" class="fas fa-sync useCursorPointer" aria-hidden="true" style="margin-left: 5px;" onclick="fetchDistributionData(function(data) { construct_piechart(data); });"></span></div>';
+    var rightBtns = '<div style="float:right;">';
+    rightBtns += '<span type="button" id="reloadDistributionGraph" title="Reload Distribution Graph" class="fas fa-sync useCursorPointer" aria-hidden="true" style="margin-left: 5px;" onclick="fetchDistributionData(function(data) { construct_piechart(data); });"></span>';
+    rightBtns += '<button type="button" class="close" style="margin-left: 5px;" onclick="$(\'.distribution_graph\').popover(\'hide\');">×</button>';
+    rightBtns += '</div>';
     var pop = $('.distribution_graph').popover({
-        title: "<b>Distribution graph</b> [atomic event]" + rightBtn,
+        title: "<b>Distribution graph</b> [atomic event]" + rightBtns,
         html: true,
         content: function() { return $('#distribution_graph_container').html(); },
         template : '<div class="popover" role="tooltip" style="z-index: 1;"><div class="arrow"></div><h3 class="popover-title"></h3><div class="popover-content" style="padding-left: '+spanOffset_orig+'px; padding-right: '+spanOffset_orig*2+'px;"></div></div>'
@@ -448,6 +452,7 @@ $(document).ready(function() {
         drawBarChart(data);
         $('#showAdvancedSharingButton').distributionNetwork({
             event_distribution: event_distribution,
+            event_distribution_name: event_distribution_text,
             distributionData: data,
             scope_id: scope_id
         });

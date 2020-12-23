@@ -4,8 +4,35 @@
         if (count($data) > 1) {
             $data = implode(', ', $data);
         } else {
-            $data = $data[0];
+            if (count($data) > 0) {
+                $data = $data[0];
+            } else {
+                $data = '';
+            }
         }
     }
-    echo h($data);
+    if (is_bool($data)) {
+        $data = sprintf(
+            '<i class="black fa fa-%s"></i>',
+            $data ? 'check' : 'times'
+        );
+        $data = '';
+    } else {
+        $data = h($data);
+        if (!empty($field['privacy'])) {
+            $data = sprintf(
+                '<span class="privacy-value quickSelect" data-hidden-value="%s">****************************************</span>&nbsp;<i class="privacy-toggle fas fa-eye useCursorPointer" title="%s"></i>',
+                $data,
+                __('Reveal hidden value')
+            );
+        }
+    }
+    if (!empty($field['onClick'])) {
+        $data = sprintf(
+            '<span onClick="%s">%s</span>',
+            $field['onClick'],
+            $data
+        );
+    }
+    echo $data;
 ?>

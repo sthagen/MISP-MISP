@@ -2,7 +2,12 @@
 App::uses('AppModel', 'Model');
 App::uses('AuthComponent', 'Controller/Component');
 App::uses('RandomTool', 'Tools');
+App::uses('GpgTool', 'Tools');
+App::uses('SendEmail', 'Tools');
 
+/**
+ * @property Log $Log
+ */
 class User extends AppModel
 {
     public $displayField = 'email';
@@ -203,7 +208,8 @@ class User extends AppModel
             'counterQuery' => ''
         ),
         'Post',
-        'UserSetting'
+        'UserSetting',
+        // 'AuthKey' - readd once the initial update storm is over
     );
 
     public $actsAs = array(
@@ -216,6 +222,24 @@ class User extends AppModel
         'Trim',
         'Containable'
     );
+
+    public function __construct($id = false, $table = null, $ds = null) {
+        parent::__construct();
+        $this->AdminSetting = ClassRegistry::init('AdminSetting');
+        $db_version = $this->AdminSetting->find('first', [
+            'recursive' => -1,
+            'conditions' => ['setting' => 'db_version'],
+            'fields' => ['value']
+        ]);
+        if ($db_version['AdminSetting']['value'] >= 62) {
+            $this->bindModel([
+                'hasMany' => ['AuthKey']
+            ], false);
+        }
+    }
+
+    /** @var CryptGpgExtended|null|false */
+    private $gpg;
 
     public function beforeValidate($options = array())
     {
@@ -294,9 +318,11 @@ class User extends AppModel
         return true;
     }
 
-    // Checks if the GnuPG key is a valid key, but also import it in the keychain.
-    // this will NOT fail on keys that can only be used for signing but not encryption!
-    // the method in verifyUsers will fail in that case.
+    /**
+     * Checks if the GnuPG key is a valid key.
+     * @param array $check
+     * @return bool
+     */
     public function validateGpgkey($check)
     {
         // LATER first remove the old gpgkey from the keychain
@@ -306,20 +332,17 @@ class User extends AppModel
         }
 
         // we have a clean, hopefully public, key here
-        try {
-            $gpg = $this->initializeGpg();
-            try {
-                $keyImportOutput = $gpg->importKey($check['gpgkey']);
-                if (!empty($keyImportOutput['fingerprint'])) {
-                    return true;
-                }
-            } catch (Exception $e) {
-                $this->log($e->getMessage());
-                return false;
-            }
-        } catch (Exception $e) {
-            $this->log($e->getMessage());
+        $gpg = $this->initializeGpg();
+        if (!$gpg) {
             return true;
+        }
+        try {
+            $gpgTool = new GpgTool($gpg);
+            $gpgTool->validateGpgKey($check['gpgkey']);
+            return true;
+        } catch (Exception $e) {
+            $this->logException("Exception during validating GPG key", $e, LOG_NOTICE);
+            return false;
         }
     }
 
@@ -446,26 +469,40 @@ class User extends AppModel
                 )));
     }
 
-    public function verifySingleGPG($user, $gpg = false)
+    /**
+     * 0 - true if key is valid
+     * 1 - User e-mail
+     * 2 - Error message
+     * 3 - Not used
+     * 4 - Key fingerprint
+     * 5 - Key fingerprint
+     * @param array $user
+     * @return array
+     */
+    public function verifySingleGPG(array $user)
     {
+        $result = [0 => false, 1 => $user['User']['email']];
+
+        $gpg = $this->initializeGpg();
         if (!$gpg) {
-            try {
-                $gpg = $this->initializeGpg();
-            } catch (Exception $e) {
-                $result[2] = 'GnuPG is not configured on this system.';
-                $result[0] = true;
-                return $result;
-            }
+            $result[2] = 'GnuPG is not configured on this system.';
+            return $result;
         }
-        $result = array();
+
         try {
             $currentTimestamp = time();
-            $temp = $gpg->importKey($user['User']['gpgkey']);
-            $key = $gpg->getKeys($temp['fingerprint']);
-            $result[5] = $temp['fingerprint'];
-            $subKeys = $key[0]->getSubKeys();
-            $sortedKeys = array('valid' => 0, 'expired' => 0, 'noEncrypt' => 0);
-            foreach ($subKeys as $subKey) {
+            $keys = $gpg->keyInfo($user['User']['gpgkey']);
+            if (count($keys) !== 1) {
+                $result[2] = 'Multiple or no key found';
+                return $result;
+            }
+
+            $key = $keys[0];
+            $result[4] = $key->getPrimaryKey()->getFingerprint();
+            $result[5] = $result[4];
+
+            $sortedKeys = ['valid' => 0, 'expired' => 0, 'noEncrypt' => 0];
+            foreach ($key->getSubKeys() as $subKey) {
                 $expiration = $subKey->getExpirationDate();
                 if ($expiration != 0 && $currentTimestamp > $expiration) {
                     $sortedKeys['expired']++;
@@ -485,21 +522,18 @@ class User extends AppModel
                 if ($sortedKeys['noEncrypt']) {
                     $result[2] .= ' Found ' . $sortedKeys['noEncrypt'] . ' subkey(s) that are sign only.';
                 }
+            } else {
                 $result[0] = true;
             }
         } catch (Exception $e) {
             $result[2] = $e->getMessage();
-            $result[0] = true;
         }
-        $result[1] = $user['User']['email'];
-        $result[4] = $temp['fingerprint'];
         return $result;
     }
 
     public function verifyGPG($id = false)
     {
         $this->Behaviors->detach('Trim');
-        $results = array();
         $conditions = array('not' => array('gpgkey' => ''));
         if ($id !== false) {
             $conditions['User.id'] = $id;
@@ -509,60 +543,32 @@ class User extends AppModel
             'recursive' => -1,
         ));
         if (empty($users)) {
-            return $results;
+            return [];
         }
         $gpg = $this->initializeGpg();
+        if (!$gpg) {
+            return [];
+        }
+        $results = [];
         foreach ($users as $k => $user) {
-            $results[$user['User']['id']] = $this->verifySingleGPG($user, $gpg);
+            $results[$user['User']['id']] = $this->verifySingleGPG($user);
         }
         return $results;
     }
 
     private function testSmimeCertificate($certif_public)
     {
-        $result = array();
+        $sendEmail = new SendEmail();
         try {
-            App::uses('Folder', 'Utility');
-            App::uses('FileAccessTool', 'Tools');
-            $fileAccessTool = new FileAccessTool();
-            $dir = APP . 'tmp' . DS . 'SMIME';
-            if (!file_exists($dir)) {
-                if (!mkdir($dir, 0750, true)) {
-                    throw new MethodNotAllowedException('The SMIME temp directory is not writeable (app/tmp/SMIME).');
-                }
-            }
-            $tempFile = $fileAccessTool->createTempFile($dir, 'SMIME');
-            $msg_test = $fileAccessTool->writeToFile($tempFile, 'test');
-            $msg_test_encrypted = $fileAccessTool->createTempFile($dir, 'SMIME');
-            // encrypt it
-            if (openssl_pkcs7_encrypt($msg_test, $msg_test_encrypted, $certif_public, null, 0, OPENSSL_CIPHER_AES_256_CBC)) {
-                $parse = openssl_x509_parse($certif_public);
-                // Valid certificate ?
-                $now = new DateTime("now");
-                $validTo_time_t_epoch = $parse['validTo_time_t'];
-                $validTo_time_t = new DateTime("@$validTo_time_t_epoch");
-                if ($validTo_time_t > $now) {
-                    // purposes smimeencrypt ?
-                    if (($parse['purposes'][5][0] == 1) && ($parse['purposes'][5][2] == 'smimeencrypt')) {
-                        $result = true;
-                    } else {
-                        // openssl_pkcs7_encrypt good -- Model/User purposes is NOT GOOD'
-                        $result = 'This certificate cannot be used to encrypt email';
-                    }
-                } else {
-                    // openssl_pkcs7_encrypt good -- Model/User expired;
-                    $result = 'This certificate is expired';
-                }
-            } else {
-                // openssl_pkcs7_encrypt NOT good -- Model/User
-                $result = 'This certificate cannot be used to encrypt email';
-            }
+            $sendEmail->testSmimeCertificate($certif_public);
+            return true;
         } catch (Exception $e) {
-            $this->log($e->getMessage());
+            if ($e->getPrevious()) {
+                return $e->getMessage() . ": " . $e->getPrevious()->getMessage();
+            }
+
+            return $e->getMessage();
         }
-        unlink($msg_test);
-        unlink($msg_test_encrypted);
-        return $result;
     }
 
     public function verifyCertificate()
@@ -582,56 +588,64 @@ class User extends AppModel
         return $results;
     }
 
-    public function getPGP($id)
+    /**
+     * If you want to check if user has GPG or X.509 or send encrypted emails to that user, you need user keys. But by
+     * default, keys are part of default user model. This method add that keys to user model.
+     *
+     * @param array $user
+     * @return array
+     * @throws Exception
+     */
+    public function fillKeysToUser(array $user)
     {
+        if (empty($user['id'])) {
+            throw new InvalidArgumentException("Invalid user model provided, not ID found.");
+        }
         $result = $this->find('first', array(
             'recursive' => -1,
-            'fields' => array('id', 'gpgkey'),
-            'conditions' => array('id' => $id),
+            'fields' => array('certif_public', 'gpgkey'),
+            'conditions' => array('id' => $user['id']),
         ));
-        return $result['User']['gpgkey'];
+        if (!$result) {
+            throw new Exception("User with ID {$user['id']} not found.");
+        }
+        $user['gpgkey'] = $result['User']['gpgkey'];
+        $user['certif_public'] = $result['User']['certif_public'];
+        return $user;
     }
 
-    public function getCertificate($id)
-    {
-        $result = $this->find('first', array(
-            'recursive' => -1,
-            'fields' => array('id', 'certif_public'),
-            'conditions' => array('id' => $id),
-        ));
-        return $result['User']['certif_public'];
-    }
-
-    // get the current user and rearrange it to be in the same format as in the auth component
-    public function getAuthUser($id)
+    /**
+     * @param int $id
+     * @return array|null
+     */
+    public function getUserById($id)
     {
         if (empty($id)) {
             throw new NotFoundException('Invalid user ID.');
         }
-        $conditions = array('User.id' => $id);
-        $user = $this->find(
+        return $this->find(
             'first',
             array(
-                'conditions' => $conditions,
+                'conditions' => array('User.id' => $id),
                 'recursive' => -1,
                 'contain' => array(
                     'Organisation',
                     'Role',
                     'Server',
-                    'UserSetting'
+                    'UserSetting',
                 )
             )
         );
+    }
+
+    // get the current user and rearrange it to be in the same format as in the auth component
+    public function getAuthUser($id)
+    {
+        $user = $this->getUserById($id);
         if (empty($user)) {
             return $user;
         }
-        // Rearrange it a bit to match the Auth object created during the login
-        $user['User']['Role'] = $user['Role'];
-        $user['User']['Organisation'] = $user['Organisation'];
-        $user['User']['Server'] = $user['Server'];
-        $user['User']['UserSetting'] = $user['UserSetting'];
-        unset($user['Organisation'], $user['Role'], $user['Server']);
-        return $user['User'];
+        return $this->rearrangeToAuthForm($user);
     }
 
     // get the current user and rearrange it to be in the same format as in the auth component
@@ -642,11 +656,7 @@ class User extends AppModel
         if (empty($user)) {
             return $user;
         }
-        // Rearrange it a bit to match the Auth object created during the login
-        $user['User']['Role'] = $user['Role'];
-        $user['User']['Organisation'] = $user['Organisation'];
-        $user['User']['Server'] = $user['Server'];
-        return $user['User'];
+        return $this->rearrangeToAuthForm($user);
     }
 
     public function getAuthUserByExternalAuth($auth_key)
@@ -667,11 +677,28 @@ class User extends AppModel
         if (empty($user)) {
             return $user;
         }
-        // Rearrange it a bit to match the Auth object created during the login
+        return $this->rearrangeToAuthForm($user);
+    }
+
+    /**
+     * User model is a mess. Sometimes it is necessary to convert User model to form that is created during the login
+     * process. This method do that work for you.
+     *
+     * @param array $user
+     * @return array
+     */
+    public function rearrangeToAuthForm(array $user)
+    {
+        if (!isset($user['User'])) {
+            throw new InvalidArgumentException('Invalid user model provided.');
+        }
+
         $user['User']['Role'] = $user['Role'];
         $user['User']['Organisation'] = $user['Organisation'];
         $user['User']['Server'] = $user['Server'];
-        unset($user['Organisation'], $user['Role'], $user['Server']);
+        if (isset($user['UserSetting'])) {
+            $user['User']['UserSetting'] = $user['UserSetting'];
+        }
         return $user['User'];
     }
 
@@ -679,7 +706,6 @@ class User extends AppModel
     // parameters are an array of org IDs that are owners (for an event this would be orgc and org)
     public function getUsersWithAccess($owners = array(), $distribution, $sharing_group_id = 0, $userConditions = array())
     {
-        $sgModel = ClassRegistry::init('SharingGroup');
         $conditions = array();
         $validOrgs = array();
         $all = true;
@@ -692,6 +718,7 @@ class User extends AppModel
 
         // add all orgs to the conditions that can see the SG
         if ($distribution == 4) {
+            $sgModel = ClassRegistry::init('SharingGroup');
             $sgOrgs = $sgModel->getOrgsWithAccess($sharing_group_id);
             if ($sgOrgs === true) {
                 $all = true;
@@ -719,8 +746,8 @@ class User extends AppModel
         $users = $this->find('all', array(
             'conditions' => $conditions,
             'recursive' => -1,
-            'fields' => array('id', 'email', 'gpgkey', 'certif_public', 'org_id'),
-            'contain' => array('Role' => array('fields' => array('perm_site_admin'))),
+            'fields' => array('id', 'email', 'gpgkey', 'certif_public', 'org_id', 'disabled'),
+            'contain' => ['Role' => ['fields' => ['perm_site_admin', 'perm_audit']], 'Organisation' => ['fields' => ['id']]],
         ));
         foreach ($users as $k => $user) {
             $user = $user['User'];
@@ -730,299 +757,77 @@ class User extends AppModel
         return $users;
     }
 
-    public function sendEmailExternal($user, $params)
+    /**
+     * @param $user - deprecated
+     * @param array $params
+     * @throws Crypt_GPG_Exception
+     * @throws SendEmailException
+     */
+    public function sendEmailExternal($user, array $params)
     {
-        $this->Log = ClassRegistry::init('Log');
-        $params['body'] = str_replace('\n', PHP_EOL, $params['body']);
-        $Email = new CakeEmail();
-        $recipient = array('User' => array('email' => $params['to']));
-        $failed = false;
-        $mock = false;
-        if (!empty($params['gpgkey'])) {
-            $recipient['User']['gpgkey'] = $params['gpgkey'];
-            $encryptionResult = $this->__encryptUsingGPG($Email, $params['body'], $params['subject'], $recipient);
-            if (isset($encryptionResult['failed'])) {
-                $mock = true;
-            }
-            if (isset($encryptionResult['failureReason'])) {
-                $failureReason = $encryptionResult['failureReason'];
-            }
-        }
-        if (!$failed) {
-            $replyToLog = '';
-            $user = array('User' => $user);
-            $attachments = array();
-            $Email->replyTo($params['reply-to']);
-            if (!empty($params['requestor_gpgkey'])) {
-                $attachments['gpgkey.asc'] = array(
-                    'data' => $params['requestor_gpgkey']
-                );
-            }
-            $Email->from(Configure::read('MISP.email'));
-            $Email->returnPath(Configure::read('MISP.email'));
-            $Email->to($params['to']);
-            $Email->subject($params['subject']);
-            $Email->emailFormat('text');
-            if (!empty($params['attachments'])) {
-                foreach ($params['attachments'] as $key => $value) {
-                    $attachments[$k] = array('data' => $value);
-                }
-            }
-            $Email->attachments($attachments);
-            if (!empty(Configure::read('MISP.disable_emailing')) || !empty($params['mock'])) {
-                $Email->transport('Debug');
-                $mock = true;
-            }
-            $result = $Email->send($params['body']);
-            $Email->reset();
-            if ($result && !$mock) {
-                return true;
-            }
-            return $result;
-        }
-        return false;
+        $gpg = $this->initializeGpg();
+        $sendEmail = new SendEmail($gpg);
+        $sendEmail->sendExternal($params);
     }
 
-    // all e-mail sending is now handled by this method
-    // Just pass the user ID in an array that is the target of the e-mail along with the message body and the alternate message body if the message cannot be encrypted
-    // the remaining two parameters are the e-mail subject and a secondary user object which will be used as the replyto address if set. If it is set and an encryption key for the replyTo user exists, then his/her public key will also be attached
-    public function sendEmail($user, $body, $bodyNoEnc = false, $subject, $replyToUser = false)
+    /**
+     * All e-mail sending is now handled by this method
+     * Just pass the user array that is the target of the e-mail along with the message body and the alternate message body if the message cannot be encrypted
+     * the remaining two parameters are the e-mail subject and a secondary user object which will be used as the replyto address if set. If it is set and an encryption key for the replyTo user exists, then his/her public key will also be attached
+     *
+     * @param array $user
+     * @param string $body
+     * @param string|false $bodyNoEnc
+     * @param string $subject
+     * @param array|false $replyToUser
+     * @return bool
+     * @throws Crypt_GPG_BadPassphraseException
+     * @throws Crypt_GPG_Exception
+     */
+    public function sendEmail(array $user, $body, $bodyNoEnc = false, $subject, $replyToUser = false)
     {
+        if ($user['User']['disabled']) {
+            return true;
+        }
+
         $this->Log = ClassRegistry::init('Log');
-        if (Configure::read('MISP.disable_emailing')) {
+        $replyToLog = $replyToUser ? ' from ' . $replyToUser['User']['email'] : '';
+
+        $gpg = $this->initializeGpg();
+        $sendEmail = new SendEmail($gpg);
+        try {
+            $encrypted = $sendEmail->sendToUser($user, $subject, $body, $bodyNoEnc ?: null, $replyToUser ?: array());
+
+        } catch (SendEmailException $e) {
+            $this->logException("Exception during sending e-mail", $e);
             $this->Log->create();
             $this->Log->save(array(
-                    'org' => 'SYSTEM',
-                    'model' => 'User',
-                    'model_id' => $user['User']['id'],
-                    'email' => $user['User']['email'],
-                    'action' => 'email',
-                    'title' => 'Email to ' . $user['User']['email'] . ', titled "' . $subject . '" failed. Reason: Emailing is currently disabled on this instance.',
-                    'change' => null,
+                'org' => 'SYSTEM',
+                'model' => 'User',
+                'model_id' => $user['User']['id'],
+                'email' => $user['User']['email'],
+                'action' => 'email',
+                'title' => 'Email' . $replyToLog . ' to ' . $user['User']['email'] . ', titled "' . $subject . '" failed. Reason: ' . $e->getMessage(),
+                'change' => null,
             ));
-            return true;
+            return false;
         }
-        if (!empty($user['User']['disabled'])) {
-            return true;
-        }
-        $failed = false;
-        $failureReason = "";
-        // check if the e-mail can be encrypted
-        $canEncryptGPG = isset($user['User']['gpgkey']) && !empty($user['User']['gpgkey']);
-        $canEncryptSMIME = isset($user['User']['certif_public']) && !empty($user['User']['certif_public']) && Configure::read('SMIME.enabled');
 
-        // If bodyonlyencrypted is enabled and the user has no encryption key, use the alternate body (if it exists)
-        if (Configure::read('GnuPG.bodyonlyencrypted') && !$canEncryptSMIME && !$canEncryptGPG && $bodyNoEnc) {
-            $body = $bodyNoEnc;
-        }
-        $body = str_replace('\n', PHP_EOL, $body);
+        $logTitle = $encrypted ? 'Encrypted email' : 'Email';
+        // Intentional two spaces to pass test :)
+        $logTitle .= $replyToLog  . '  to ' . $user['User']['email'] . ' sent, titled "' . $subject . '".';
 
-        $Email = new CakeEmail();
-        // If we cannot encrypt the mail and the server settings restricts sending unencrypted messages, return false
-        if (!$failed && Configure::read('GnuPG.onlyencrypted') && !$canEncryptGPG && !$canEncryptSMIME) {
-            $failed = true;
-            $failureReason = " encrypted messages are enforced and the message could not be encrypted for this user as no valid encryption key was found.";
-        }
-        // Let's encrypt the message if we can
-        if (!$failed && $canEncryptGPG) {
-            $encryptionResult = $this->__encryptUsingGPG($Email, $body, $subject, $user);
-            if (isset($encryptionResult['failed'])) {
-                $failed = true;
-            }
-            if (isset($encryptionResult['failureReason'])) {
-                $failureReason = $encryptionResult['failureReason'];
-            }
-        }
-        // SMIME if not GPG key
-        if (!$failed && !$canEncryptGPG && $canEncryptSMIME) {
-            $encryptionResult = $this->__encryptUsingSmime($Email, $body, $subject, $user);
-            if (isset($encryptionResult['failed'])) {
-                $failed = true;
-            }
-            if (isset($encryptionResult['failureReason'])) {
-                $failureReason = $encryptionResult['failureReason'];
-            }
-        }
-        $replyToLog = '';
-        if (!$failed) {
-            $result = $this->__finaliseAndSendEmail($replyToUser, $Email, $replyToLog, $user, $subject, $body);
-        }
-        $this->Log = ClassRegistry::init('Log');
         $this->Log->create();
-        if (!$failed && $result) {
-            $this->Log->save(array(
-                    'org' => 'SYSTEM',
-                    'model' => 'User',
-                    'model_id' => $user['User']['id'],
-                    'email' => $user['User']['email'],
-                    'action' => 'email',
-                    'title' => 'Email ' . $replyToLog  . ' to ' . $user['User']['email'] . ' sent, titled "' . $subject . '".',
-                    'change' => null,
-            ));
-            return true;
-        } else {
-            if (empty($failureReason)) {
-                $failureReason = " there was an error sending the e-mail.";
-            }
-            $this->Log->save(array(
-                    'org' => 'SYSTEM',
-                    'model' => 'User',
-                    'model_id' => $user['User']['id'],
-                    'email' => $user['User']['email'],
-                    'action' => 'email',
-                    'title' => 'Email ' . $replyToLog  . ' to ' . $user['User']['email'] . ', titled "' . $subject . '" failed. Reason: ' . $failureReason,
-                    'change' => null,
-            ));
-        }
-        return false;
-    }
-
-    private function __finaliseAndSendEmail($replyToUser, &$Email, &$replyToLog, $user, $subject, $body, $additionalAttachments = false)
-    {
-        // If the e-mail is sent on behalf of a user, then we want the target user to be able to respond to the sender
-        // For this reason we should also attach the public key of the sender along with the message (if applicable)
-        $attachments = array();
-        if ($replyToUser != false) {
-            $Email->replyTo($replyToUser['User']['email']);
-            if (!empty($replyToUser['User']['gpgkey'])) {
-                $attachments['gpgkey.asc'] = array(
-                    'data' => $replyToUser['User']['gpgkey']
-                );
-            } elseif (!empty($replyToUser['User']['certif_public'])) {
-                $attachments[$replyToUser['User']['email'] . '.pem'] = array(
-                    'data' => $replyToUser['User']['certif_public']
-                );
-            }
-            $replyToLog = 'from ' . $replyToUser['User']['email'];
-        }
-        $Email->from(Configure::read('MISP.email'));
-        $Email->returnPath(Configure::read('MISP.email'));
-        $Email->to($user['User']['email']);
-        $Email->subject($subject);
-        $Email->emailFormat('text');
-        if (!empty($additionalAttachments)) {
-            foreach ($additionalAttachments as $key => $value) {
-                $attachments[$k] = array('data' => $value);
-            }
-        }
-        $Email->attachments($attachments);
-        $result = $Email->send($body);
-        $Email->reset();
-        return $result;
-    }
-
-    private function __encryptUsingGPG(&$Email, &$body, $subject, $user)
-    {
-        $failed = false;
-        // Sign the body
-        require_once 'Crypt/GPG.php';
-        try {
-            $gpg = new Crypt_GPG(array('homedir' => Configure::read('GnuPG.homedir'), 'gpgconf' => Configure::read('GnuPG.gpgconf'), 'binary' => (Configure::read('GnuPG.binary') ? Configure::read('GnuPG.binary') : '/usr/bin/gpg'), 'debug'));   // , 'debug' => true
-            if (Configure::read('GnuPG.sign')) {
-                $gpg->addSignKey(Configure::read('GnuPG.email'), Configure::read('GnuPG.password'));
-                $body = $gpg->sign($body, Crypt_GPG::SIGN_MODE_CLEAR);
-            }
-        } catch (Exception $e) {
-            $failureReason = " the message could not be signed. The following error message was returned by gpg: " . $e->getMessage();
-            $this->log($e->getMessage());
-            $failed = true;
-        }
-        if (!$failed) {
-            $keyImportOutput = $gpg->importKey($user['User']['gpgkey']);
-            try {
-                $key = $gpg->getKeys($keyImportOutput['fingerprint']);
-                $subKeys = $key[0]->getSubKeys();
-                $canEncryptGPG = false;
-                $currentTimestamp = time();
-                foreach ($subKeys as $subKey) {
-                    $expiration = $subKey->getExpirationDate();
-                    if (($expiration == 0 || $currentTimestamp < $expiration) && $subKey->canEncrypt()) {
-                        $canEncryptGPG = true;
-                    }
-                }
-                if ($canEncryptGPG) {
-                    $gpg->addEncryptKey($keyImportOutput['fingerprint']); // use the key that was given in the import
-                    $body = $gpg->encrypt($body, true);
-                } else {
-                    $failed = true;
-                    $failureReason = " the message could not be encrypted because the provided key is either expired or cannot be used for encryption.";
-                }
-            } catch (Exception $e) {
-                // despite the user having a GnuPG key and the signing already succeeding earlier, we get an exception. This must mean that there is an issue with the user's key.
-                $failureReason = " the message could not be encrypted because there was an issue with the user's GnuPG key. The following error message was returned by gpg: " . $e->getMessage();
-                $this->log($e->getMessage());
-                $failed = true;
-            }
-        }
-        if (!empty($failed)) {
-            return array('failed' => $failed, 'failureReason' => $failureReason);
-        }
+        $this->Log->save(array(
+            'org' => 'SYSTEM',
+            'model' => 'User',
+            'model_id' => $user['User']['id'],
+            'email' => $user['User']['email'],
+            'action' => 'email',
+            'title' => $logTitle,
+            'change' => null,
+        ));
         return true;
-    }
-
-    private function __encryptUsingSmime(&$Email, &$body, $subject, $user)
-    {
-        try {
-            $prependedBody = 'Content-Transfer-Encoding: 7bit' . PHP_EOL . 'Content-Type: text/plain;' . PHP_EOL . '    charset=us-ascii' . PHP_EOL . PHP_EOL . $body;
-            App::uses('Folder', 'Utility');
-            App::uses('FileAccessTool', 'Tools');
-            $fileAccessTool = new FileAccessTool();
-            $dir = APP . 'tmp' . DS . 'SMIME';
-            if (!file_exists($dir)) {
-                if (!mkdir($dir, 0750, true)) {
-                    throw new MethodNotAllowedException('The SMIME temp directory is not writeable (app/tmp/SMIME).');
-                }
-            }
-            // save message to file
-            $tempFile = $fileAccessTool->createTempFile($dir, 'SMIME');
-            $msg = $fileAccessTool->writeToFile($tempFile, $prependedBody);
-            $headers_smime = array("To" => $user['User']['email'], "From" => Configure::read('MISP.email'), "Subject" => $subject);
-            $canSign = true;
-            if (
-                !empty(Configure::read('SMIME.cert_public_sign')) &&
-                is_readable(Configure::read('SMIME.cert_public_sign')) &&
-                !empty(Configure::read('SMIME.key_sign')) &&
-                is_readable(Configure::read('SMIME.key_sign'))
-            ) {
-                $signed = $fileAccessTool->createTempFile($dir, 'SMIME');
-                if (openssl_pkcs7_sign($msg, $signed, 'file://'.Configure::read('SMIME.cert_public_sign'), array('file://'.Configure::read('SMIME.key_sign'), Configure::read('SMIME.password')), array(), PKCS7_TEXT)) {
-                    $bodySigned = $fileAccessTool->readFromFile($signed);
-                    unlink($msg);
-                    unlink($signed);
-                } else {
-                    unlink($msg);
-                    unlink($signed);
-                    throw new Exception('Failed while attempting to sign the SMIME message.');
-                }
-                // save message to file
-                $tempFile = $fileAccessTool->createTempFile($dir, 'SMIME');
-                $msg_signed = $fileAccessTool->writeToFile($tempFile, $bodySigned);
-            } else {
-                $msg_signed = $msg;
-            }
-            $msg_signed_encrypted = $fileAccessTool->createTempFile($dir, 'SMIME');
-            // encrypt it
-            if (openssl_pkcs7_encrypt($msg_signed, $msg_signed_encrypted, $user['User']['certif_public'], $headers_smime, 0, OPENSSL_CIPHER_AES_256_CBC)) {
-                $bodyEncSig = $fileAccessTool->readFromFile($msg_signed_encrypted);
-                unlink($msg_signed);
-                unlink($msg_signed_encrypted);
-                $parts = explode("\n\n", $bodyEncSig);
-                $bodyEncSig = $parts[1];
-                // SMIME transport (hardcoded headers
-                $Email = $Email->transport('Smime');
-                $body = $bodyEncSig;
-            } else {
-                unlink($msg_signed);
-                unlink($msg_signed_encrypted);
-                throw new Exception('Could not encrypt the SMIME message.');
-            }
-        } catch (Exception $e) {
-            // despite the user having a certificate. This must mean that there is an issue with the user's certificate.
-            $result['failureReason'] = " the message could not be encrypted because there was an issue with the user's public certificate. The following error message was returned by openssl: " . $e->getMessage();
-            $this->log($e->getMessage());
-            $result['failed'] = true;
-        }
-        return $result;
     }
 
     public function adminMessageResolve($message)
@@ -1035,66 +840,41 @@ class User extends AppModel
         return $message;
     }
 
-    public function fetchPGPKey($email)
+    /**
+     * @param string $email
+     * @return array
+     * @throws Exception
+     */
+    public function searchGpgKey($email)
     {
-        App::uses('SyncTool', 'Tools');
-        $syncTool = new SyncTool();
-        $HttpSocket = $syncTool->setupHttpSocket();
-        $response = $HttpSocket->get('https://pgp.circl.lu/pks/lookup?search=' . urlencode($email) . '&op=index&fingerprint=on&options=mr');
-        if ($response->code != 200) {
-            return $response->code;
-        }
-        return $this->__extractPGPInfo($response->body);
+        $gpgTool = new GpgTool(null);
+        return $gpgTool->searchGpgKey($email);
     }
 
-    private function __extractPGPInfo($body)
+    /**
+     * @param string $fingerprint
+     * @return string|null
+     * @throws Exception
+     */
+    public function fetchGpgKey($fingerprint)
     {
-        $final = array();
-        $lines = explode("\n", $body);
-        foreach ($lines as $line) {
-            $parts = explode(":", $line);
-
-            if ($parts[0] === 'pub') {
-                if (!empty($temp)) {
-                    $final[] = $temp;
-                    $temp = array();
-                }
-
-                if (strpos($parts[6], 'r') !== false || strpos($parts[6], 'd') !== false || strpos($parts[6], 'e') !== false) {
-                    continue; // skip if key is expired, revoked or disabled
-                }
-
-                $temp = array(
-                    'fingerprint' => chunk_split($parts[1], 4, ' '),
-                    'key_id' => substr($parts[1], -8),
-                    'date' => date('Y-m-d', $parts[4]),
-                    'uri' => '/pks/lookup?op=get&search=0x' . $parts[1],
-                );
-
-            } else if ($parts[0] === 'uid' && !empty($temp)) {
-                $temp['address'] = urldecode($parts[1]);
-            }
-        }
-
-        if (!empty($temp)) {
-            $final[] = $temp;
-        }
-
-        return $final;
+        $gpgTool = new GpgTool($this->initializeGpg());
+        return $gpgTool->fetchGpgKey($fingerprint);
     }
 
+    /**
+     * Returns fields that should be fetched from database.
+     * @return array
+     */
     public function describeAuthFields()
     {
-        $fields = array();
-        $fields = array_merge($fields, array_keys($this->getColumnTypes()));
-        foreach ($fields as $k => $field) {
-            if (in_array($field, array('gpgkey', 'certif_public'))) {
-                unset($fields[$k]);
-            }
-        }
-        $fields = array_values($fields);
-        $relatedModels = array_keys($this->belongsTo);
-        foreach ($relatedModels as $relatedModel) {
+        $fields = $this->schema();
+        // Do not include keys, because they are big and usually not necessary
+        unset($fields['gpgkey']);
+        unset($fields['certif_public']);
+        $fields = array_keys($fields);
+
+        foreach ($this->belongsTo as $relatedModel => $foo) {
             $fields[] = $relatedModel . '.*';
         }
         return $fields;
@@ -1166,7 +946,7 @@ class User extends AppModel
     public function initiatePasswordReset($user, $firstTime = false, $simpleReturn = false, $fixedPassword = false)
     {
         $org = Configure::read('MISP.org');
-        $options = array('passwordResetText', 'newUserText');
+        $options = array('newUserText', 'passwordResetText');
         $subjects = array('[' . $org . ' MISP] New user registration', '[' . $org .  ' MISP] Password reset');
         $textToFetch = $options[($firstTime ? 0 : 1)];
         $subject = $subjects[($firstTime ? 0 : 1)];
@@ -1356,23 +1136,28 @@ class User extends AppModel
             return false;
         }
         $updatedUser = $this->read();
-        $oldKey = $this->data['User']['authkey'];
         if (empty($user['Role']['perm_site_admin']) && !($user['Role']['perm_admin'] && $user['org_id'] == $updatedUser['User']['org_id']) && ($user['id'] != $id)) {
             return false;
         }
-        $newkey = $this->generateAuthKey();
-        $this->saveField('authkey', $newkey);
-        $this->extralog(
-                $user,
-                'reset_auth_key',
-                sprintf(
-                    __('Authentication key for user %s (%s) updated.'),
-                    $updatedUser['User']['id'],
-                    $updatedUser['User']['email']
-                ),
-                $fieldsResult = 'authkey(' . $oldKey . ') => (' . $newkey . ')',
-                $updatedUser
-        );
+        if (empty(Configure::read('Security.advanced_authkeys'))) {
+            $oldKey = $this->data['User']['authkey'];
+            $newkey = $this->generateAuthKey();
+            $this->saveField('authkey', $newkey);
+            $this->extralog(
+                    $user,
+                    'reset_auth_key',
+                    sprintf(
+                        __('Authentication key for user %s (%s) updated.'),
+                        $updatedUser['User']['id'],
+                        $updatedUser['User']['email']
+                    ),
+                    $fieldsResult = ['authkey' =>  [$oldKey, $newkey]],
+                    $updatedUser
+            );
+        } else {
+            $this->AuthKey = ClassRegistry::init('AuthKey');
+            $newkey = $this->AuthKey->resetauthkey($id);
+        }
         if ($alert) {
             $baseurl = Configure::read('MISP.external_baseurl');
             if (empty($baseurl)) {
@@ -1419,46 +1204,210 @@ class User extends AppModel
 
         // query
         $this->Log = ClassRegistry::init('Log');
-        $this->Log->create();
-        $this->Log->save(array(
-            'org' => $user['Organisation']['name'],
-            'model' => $model,
-            'model_id' => $modelId,
-            'email' => $user['email'],
-            'action' => $action,
-            'title' => $description,
-            'change' => isset($fieldsResult) ? $fieldsResult : ''));
+        $result = $this->Log->createLogEntry($user, $action, $model, $modelId, $description, $fieldsResult);
 
         // write to syslogd as well
         App::import('Lib', 'SysLog.SysLog');
         $syslog = new SysLog();
-        $syslog->write('notice', $description . ' -- ' . $action . (empty($fieldResult) ? '' : '-- ' . $fieldResult));
+        $syslog->write('notice', "$description -- $action" . (empty($fieldResult) ? '' : ' -- ' . $result['Log']['change']));
+    }
+
+    public function getOrgActivity($orgId, $params=array())
+    {
+        $conditions = array();
+        $options = array();
+        foreach($params as $paramName => $value) {
+            $options['filter'] = $paramName;
+            $filterParam[$paramName] = $value;
+            $conditions = $this->Event->set_filter_timestamp($filterParam, $conditions, $options);
+        }
+        $conditions['Event.orgc_id'] = $orgId;
+        $events = $this->Event->find('all', array(
+            'recursive' => -1,
+            'fields' => array('Event.orgc_id', 'Event.timestamp', 'Event.attribute_count'),
+            'conditions' => $conditions,
+            'order' => 'Event.timestamp'
+        ));
+        $sparklineData = array();
+        foreach ($events as $event) {
+            $date = date("Y-m-d", $event['Event']['timestamp']);
+            if (!isset($sparklineData[$event['Event']['attribute_count']][$date])) {
+                $sparklineData[$date] = $event['Event']['attribute_count'];
+            } else {
+                $sparklineData[$date] += $event['Event']['attribute_count'];
+            }
+        }
+
+        // get first and last timestamp
+        if (isset($params['from'])) {
+            $startDate = $params['from'];
+        } else {
+            $startDate = $this->resolveTimeDelta($params['event_timestamp']);
+        }
+        if (isset($params['to'])) {
+            $endDate = $params['to'];
+        } else {
+            $endDate = time();
+        }
+        $dates = array();
+        for ($d=$startDate; $d < $endDate; $d=$d+3600*24) {
+            $dates[] = date('Y-m-d', $d);
+        }
+        $csv = 'Date,Close\n';
+        foreach ($dates as $date) {
+            $csv .= sprintf('%s,%s\n', $date, isset($sparklineData[$date]) ? $sparklineData[$date] : 0);
+        }
+        $data = array(
+            'csv' => $csv,
+            'data' => $sparklineData,
+            'orgId' => $orgId
+        );
+        return $data;
+    }
+
+    /*
+     *  Set the monitoring flag in Configure for the current user
+     *  Reads the state from redis
+     */
+    public function setMonitoring($user)
+    {
+        if (
+            !empty(Configure::read('Security.user_monitoring_enabled'))
+        ) {
+            $redis = $this->setupRedis();
+            if (!empty($redis->sismember('misp:monitored_users', $user['id']))) {
+                Configure::write('Security.monitored', 1);
+                return true;
+            }
+        }
+        Configure::write('Security.monitored', 0);
+    }
+
+    public function registerUser($added_by, $registration, $org_id, $role_id) {
+        $user = array(
+                'email' => $registration['data']['email'],
+                'gpgkey' => empty($registration['data']['pgp']) ? '' : $registration['data']['pgp'],
+                'disabled' => 0,
+                'newsread' => 0,
+                'change_pw' => 1,
+                'authkey' => $this->generateAuthKey(),
+                'termsaccepted' => 0,
+                'org_id' => $org_id,
+                'role_id' => $role_id,
+                'invited_by' => $added_by['id'],
+                'contactalert' => 1,
+                'autoalert' => Configure::check('MISP.default_publish_alert') ? Configure::read('MISP.default_publish_alert') : 1
+        );
+        $this->create();
+        $this->Log = ClassRegistry::init('Log');
+        $result = $this->save(array('User' => $user));
+        $currentOrg = $this->Organisation->find('first', array(
+            'recursive' => -1,
+            'conditions' => array('Organisation.id' => $org_id)
+        ));
+        if (!empty($currentOrg) && empty($currentOrg['Organisation']['local'])) {
+            $currentOrg['Organisation']['local'] = 1;
+            $this->Organisation->save($currentOrg);
+        }
+        if (empty($result)) {
+            $error = array();
+            foreach ($this->validationErrors as $key => $errors) {
+                $error[$key] = $key . ': ' . implode(', ', $errors);
+            }
+            $error = implode(PHP_EOL, $error);
+            $this->Log->save(array(
+                    'org' => 'SYSTEM',
+                    'model' => 'User',
+                    'model_id' => $added_by['id'],
+                    'email' => $added_by['email'],
+                    'action' => 'registration_error',
+                    'title' => 'User registration failed for ' . $user['email'] . '. Reason(s): ' . $error,
+                    'change' => null,
+            ));
+            return false;
+        } else {
+            $user = $this->find('first', array(
+                'recursive' => -1,
+                'conditions' => array('id' => $this->id)
+            ));
+            $this->Log->save(array(
+                'org' => 'SYSTEM',
+                'model' => 'User',
+                'model_id' => $added_by['id'],
+                'email' => $added_by['email'],
+                'action' => 'registration',
+                'title' => sprintf('User registration success for %s (id=%s)', $user['User']['email'], $user['User']['id']),
+                'change' => null,
+            ));
+            $this->initiatePasswordReset($user, true, true, false);
+            $this->Inbox = ClassRegistry::init('Inbox');
+            $this->Inbox->delete($registration['id']);
+            return true;
+        }
     }
 
     /**
-     * @return Crypt_GPG
+     * Updates `current_login` and `last_login` time in database.
+     *
+     * @param array $user
+     * @return array|bool
      * @throws Exception
+     */
+    public function updateLoginTimes(array $user)
+    {
+        if (!isset($user['id'])) {
+            throw new InvalidArgumentException("Invalid user object provided.");
+        }
+        $user['action'] = 'login'; // for afterSave callbacks
+        $user['last_login'] = $user['current_login'];
+        $user['current_login'] = time();
+        return $this->save($user, true, array('id', 'last_login', 'current_login'));
+    }
+
+    /**
+     * Update field in user model and also set `date_modified`
+     *
+     * @param array $user
+     * @param string $name
+     * @param mixed $value
+     * @throws Exception
+     */
+    public function updateField(array $user, $name, $value)
+    {
+        if (!isset($user['id'])) {
+            throw new InvalidArgumentException("Invalid user object provided.");
+        }
+        $success = $this->save([
+            'id' => $user['id'],
+            $name => $value,
+        ], true, ['id', $name, 'date_modified']);
+        if (!$success) {
+            throw new RuntimeException("Could not save field `$name` with value `$value` for user `{$user['id']}`.");
+        }
+    }
+
+    /**
+     * Initialize GPG. Returns `null` if initialization failed.
+     *
+     * @return null|CryptGpgExtended
      */
     private function initializeGpg()
     {
-        if (!class_exists('Crypt_GPG')) {
-            if (!stream_resolve_include_path('Crypt/GPG.php')) {
-                throw new Exception("Crypt_GPG is not installed.");
+        if ($this->gpg !== null) {
+            if ($this->gpg === false) { // initialization failed
+                return null;
             }
-            require_once 'Crypt/GPG.php';
+
+            return $this->gpg;
         }
 
-        $homedir = Configure::read('GnuPG.homedir');
-        if ($homedir === null) {
-            throw new Exception("Configuration option 'GnuPG.homedir' is not set, Crypt_GPG cannot be initialized.");
+        try {
+            $this->gpg = GpgTool::initializeGpg();
+            return $this->gpg;
+        } catch (Exception $e) {
+            $this->logException("GPG couldn't be initialized, GPG encryption and signing will be not available.", $e, LOG_NOTICE);
+            $this->gpg = false;
+            return null;
         }
-
-        $options = array(
-            'homedir' => $homedir,
-            'gpgconf' => Configure::read('GnuPG.gpgconf'),
-            'binary' => Configure::read('GnuPG.binary') ?: '/usr/bin/gpg',
-        );
-
-        return new Crypt_GPG($options);
     }
 }

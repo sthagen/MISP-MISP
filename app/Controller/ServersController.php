@@ -1,7 +1,11 @@
 <?php
 App::uses('AppController', 'Controller');
 App::uses('Xml', 'Utility');
+App::uses('AttachmentTool', 'Tools');
 
+/**
+ * @property Server $Server
+ */
 class ServersController extends AppController
 {
     public $components = array('Security' ,'RequestHandler');   // XXX ACL component
@@ -110,8 +114,13 @@ class ServersController extends AppController
         if (empty($combinedArgs['limit'])) {
             $combinedArgs['limit'] = 60;
         }
-        $total_count = 0;
-        $events = $this->Server->previewIndex($id, $this->Auth->user(), $combinedArgs, $total_count);
+        try {
+            list($events, $total_count) = $this->Server->previewIndex($id, $this->Auth->user(), $combinedArgs);
+        } catch (Exception $e) {
+            $this->Flash->error(__('Download failed.') . ' ' . $e->getMessage());
+            $this->redirect(array('action' => 'index'));
+        }
+
         $this->loadModel('Event');
         $threat_levels = $this->Event->ThreatLevel->find('all');
         $this->set('threatLevels', Set::combine($threat_levels, '{n}.ThreatLevel.id', '{n}.ThreatLevel.name'));
@@ -122,11 +131,9 @@ class ServersController extends AppController
             $params['pageCount'] = ceil($total_count / $params['limit']);
         }
         $this->params->params['paging'] = array($this->modelClass => $params);
-        if (is_array($events)) {
-            if (count($events) > 60) {
-                $customPagination->truncateByPagination($events, $params);
-            }
-        } else ($events = array());
+        if (count($events) > 60) {
+            $customPagination->truncateByPagination($events, $params);
+        }
         $this->set('events', $events);
         $this->set('eventDescriptions', $this->Event->fieldDescriptions);
         $this->set('analysisLevels', $this->Event->analysisLevels);
@@ -146,22 +153,36 @@ class ServersController extends AppController
         if (!$this->_isSiteAdmin()) {
             throw new MethodNotAllowedException('You are not authorised to do that.');
         }
-        $server = $this->Server->find('first', array('conditions' => array('Server.id' => $serverId), 'recursive' => -1, 'fields' => array('Server.id', 'Server.url', 'Server.name')));
+        $server = $this->Server->find('first', array(
+            'conditions' => array('Server.id' => $serverId),
+            'recursive' => -1,
+            'fields' => array('Server.id', 'Server.url', 'Server.name'))
+        );
         if (empty($server)) {
             throw new NotFoundException('Invalid server ID.');
         }
-        $event = $this->Server->previewEvent($serverId, $eventId);
-        // work on this in the future to improve the feedback
-        // 2 = wrong error code
-        if (is_numeric($event)) {
-            throw new NotFoundException('Invalid event.');
+        try {
+            $event = $this->Server->previewEvent($serverId, $eventId);
+        } catch (NotFoundException $e) {
+            throw new NotFoundException(__("Event '%s' not found.", $eventId));
+        } catch (Exception $e) {
+            $this->Flash->error(__('Download failed. %s', $e->getMessage()));
+            $this->redirect(array('action' => 'previewIndex', $serverId));
         }
+
+        $this->loadModel('Warninglist');
+        if (isset($event['Event']['Attribute'])) {
+            $this->Warninglist->attachWarninglistToAttributes($event['Event']['Attribute']);
+        }
+        if (isset($event['Event']['ShadowAttribute'])) {
+            $this->Warninglist->attachWarninglistToAttributes($event['Event']['ShadowAttribute']);
+        }
+
         $this->loadModel('Event');
         $params = $this->Event->rearrangeEventForView($event, $this->passedArgs, $all);
         $this->params->params['paging'] = array('Server' => $params);
         $this->set('event', $event);
         $this->set('server', $server);
-        $this->loadModel('Event');
         $dataForView = array(
                 'Attribute' => array('attrDescriptions' => 'fieldDescriptions', 'distributionDescriptions' => 'distributionDescriptions', 'distributionLevels' => 'distributionLevels'),
                 'Event' => array('eventDescriptions' => 'fieldDescriptions', 'analysisLevels' => 'analysisLevels'),
@@ -250,6 +271,9 @@ class ServersController extends AppController
                     $defaults = array(
                         'push' => 0,
                         'pull' => 0,
+                        'push_sightings' => 0,
+                        'push_galaxy_clusters' => 0,
+                        'pull_galaxy_clusters' => 0,
                         'caching_enabled' => 0,
                         'json' => '[]',
                         'push_rules' => '[]',
@@ -384,15 +408,9 @@ class ServersController extends AppController
             $this->set('externalOrganisations', $externalOrganisations);
             $this->set('allOrganisations', $allOrgs);
 
-            // list all tags for the rule picker
-            $this->loadModel('Tag');
-            $temp = $this->Tag->find('all', array('recursive' => -1));
-            $allTags = array();
-            foreach ($temp as $t) {
-                $allTags[] = array('id' => $t['Tag']['id'], 'name' => $t['Tag']['name']);
-            }
-            $this->set('allTags', $allTags);
+            $this->set('allTags', $this->__getTags());
             $this->set('host_org_id', Configure::read('MISP.host_org_id'));
+            $this->render('edit');
         }
     }
 
@@ -444,7 +462,7 @@ class ServersController extends AppController
             }
             if (!$fail) {
                 // say what fields are to be updated
-                $fieldList = array('id', 'url', 'push', 'pull', 'caching_enabled', 'unpublish_event', 'publish_without_email', 'remote_org_id', 'name' ,'self_signed', 'cert_file', 'client_cert_file', 'push_rules', 'pull_rules', 'internal', 'skip_proxy');
+                $fieldList = array('id', 'url', 'push', 'pull', 'push_sightings', 'push_galaxy_clusters', 'pull_galaxy_clusters', 'caching_enabled', 'unpublish_event', 'publish_without_email', 'remote_org_id', 'name' ,'self_signed', 'cert_file', 'client_cert_file', 'push_rules', 'pull_rules', 'internal', 'skip_proxy');
                 $this->request->data['Server']['id'] = $id;
                 if (isset($this->request->data['Server']['authkey']) && "" != $this->request->data['Server']['authkey']) {
                     $fieldList[] = 'authkey';
@@ -576,14 +594,7 @@ class ServersController extends AppController
             $this->set('externalOrganisations', $externalOrganisations);
             $this->set('allOrganisations', $allOrgs);
 
-            // list all tags for the rule picker
-            $this->loadModel('Tag');
-            $temp = $this->Tag->find('all', array('recursive' => -1));
-            $allTags = array();
-            foreach ($temp as $t) {
-                $allTags[] = array('id' => $t['Tag']['id'], 'name' => $t['Tag']['name']);
-            }
-            $this->set('allTags', $allTags);
+            $this->set('allTags', $this->__getTags());
             $this->set('server', $s);
             $this->set('id', $id);
             $this->set('host_org_id', Configure::read('MISP.host_org_id'));
@@ -628,6 +639,49 @@ class ServersController extends AppController
         }
     }
 
+    public function eventBlockRule()
+    {
+        $this->AdminSetting = ClassRegistry::init('AdminSetting');
+        $setting = $this->AdminSetting->find('first', [
+            'conditions' => ['setting' => 'eventBlockRule'],
+            'recursive' => -1
+        ]);
+        if (empty($setting)) {
+            $setting = ['setting' => 'eventBlockRule'];
+            if ($this->request->is('post')) {
+                $this->AdminSetting->create();
+            }
+        }
+        if ($this->request->is('post')) {
+            if (!empty($this->request->data['Server'])) {
+                $this->request->data = $this->request->data['Server'];
+            }
+            $setting['AdminSetting']['setting'] = 'eventBlockRule';
+            $setting['AdminSetting']['value'] = $this->request->data['value'];
+            $result = $this->AdminSetting->save($setting);
+            if ($result) {
+                $message = __('Settings saved');
+            } else {
+                $message = __('Could not save the settings. Invalid input.');
+            }
+            if ($this->_isRest()) {
+                if ($result) {
+                    return $this->RestResponse->saveFailResponse('Servers', 'eventBlockRule', false, $message, $this->response->type());
+                } else {
+                    return $this->RestResponse->saveSuccessResponse('Servers', 'eventBlockRule', $message, $this->response->type());
+                }
+            } else {
+                if ($result) {
+                    $this->Flash->success($message);
+                    $this->redirect('/');
+                } else {
+                    $this->Flash->error($message);
+                }
+            }
+        }
+        $this->set('setting', $setting);
+    }
+
     /**
      * Pull one or more events with attributes from a remote instance.
      * Set $technique to
@@ -659,17 +713,21 @@ class ServersController extends AppController
         if (false == $this->Server->data['Server']['pull'] && ($technique == 'full' || $technique == 'incremental')) {
             $error = __('Pull setting not enabled for this server.');
         }
+        if (false == $this->Server->data['Server']['pull_galaxy_clusters'] && ($technique == 'pull_relevant_clusters')) {
+            $error = __('Pull setting not enabled for this server.');
+        }
         if (empty($error)) {
             if (!Configure::read('MISP.background_jobs')) {
                 $result = $this->Server->pull($this->Auth->user(), $id, $technique, $s);
                 if (is_array($result)) {
-                    $success = sprintf(__('Pull completed. %s events pulled, %s events could not be pulled, %s proposals pulled.', count($result[0]), count($result[1]), $result[2]));
+                    $success = sprintf(__('Pull completed. %s events pulled, %s events could not be pulled, %s proposals pulled, %s sightings pulled, %s clusters pulled.', count($result[0]), count($result[1]), $result[2], $result[3], $result[4]));
                 } else {
                     $error = $result;
                 }
                 $this->set('successes', $result[0]);
                 $this->set('fails', $result[1]);
                 $this->set('pulledProposals', $result[2]);
+                $this->set('pulledSightings', $result[3]);
             } else {
                 $this->loadModel('Job');
                 $this->Job->create();
@@ -749,7 +807,7 @@ class ServersController extends AppController
                 }
             }
             if ($this->_isRest()) {
-                return $this->RestResponse->saveSuccessResponse('Servers', 'push', array(sprintf(__('Push complete. %s events pushed, %s events could not be pushed.', $result[0], $result[1]))), $this->response->type());
+                return $this->RestResponse->saveSuccessResponse('Servers', 'push', __('Push complete. %s events pushed, %s events could not be pushed.', count($result[0]), count($result[1])), $this->response->type());
             } else {
                 $this->set('successes', $result[0]);
                 $this->set('fails', $result[1]);
@@ -983,13 +1041,15 @@ class ServersController extends AppController
             if ($tab == 'diagnostics' || $tab == 'download' || $this->_isRest()) {
                 $php_ini = php_ini_loaded_file();
                 $this->set('php_ini', $php_ini);
-                $advanced_attachments = shell_exec($this->Server->getPythonVersion() . ' ' . APP . 'files/scripts/generate_file_objects.py -c');
 
+                $attachmentTool = new AttachmentTool();
                 try {
-                    $advanced_attachments = json_decode($advanced_attachments, true);
+                    $advanced_attachments = $attachmentTool->checkAdvancedExtractionStatus($this->Server->getPythonVersion());
                 } catch (Exception $e) {
+                    $this->log($e->getMessage(), LOG_NOTICE);
                     $advanced_attachments = false;
                 }
+
                 $this->set('advanced_attachments', $advanced_attachments);
                 // check if the current version of MISP is outdated or not
                 $version = $this->__checkVersion();
@@ -1052,6 +1112,7 @@ class ServersController extends AppController
 
                 // get the DB diagnostics
                 $dbDiagnostics = $this->Server->dbSpaceUsage();
+                $dbSchemaDiagnostics = $this->Server->dbSchemaDiagnostic();
 
                 $redisInfo = $this->Server->redisInfo();
 
@@ -1065,7 +1126,14 @@ class ServersController extends AppController
                 $sessionStatus = $this->Server->sessionDiagnostics($diagnostic_errors, $sessionCount);
                 $this->set('sessionCount', $sessionCount);
 
-                $additionalViewVars = array('gpgStatus', 'sessionErrors', 'proxyStatus', 'sessionStatus', 'zmqStatus', 'stixVersion', 'cyboxVersion', 'mixboxVersion', 'maecVersion', 'stix2Version', 'pymispVersion', 'moduleStatus', 'yaraStatus', 'gpgErrors', 'proxyErrors', 'zmqErrors', 'stixOperational', 'stix', 'moduleErrors', 'moduleTypes', 'dbDiagnostics', 'redisInfo');
+                $this->loadModel('AttachmentScan');
+                try {
+                    $attachmentScan = ['status' => true, 'software' => $this->AttachmentScan->diagnostic()];
+                } catch (Exception $e) {
+                    $attachmentScan = ['status' => false, 'error' => $e->getMessage()];
+                }
+
+                $additionalViewVars = array('gpgStatus', 'sessionErrors', 'proxyStatus', 'sessionStatus', 'zmqStatus', 'stixVersion', 'cyboxVersion', 'mixboxVersion', 'maecVersion', 'stix2Version', 'pymispVersion', 'moduleStatus', 'yaraStatus', 'gpgErrors', 'proxyErrors', 'zmqErrors', 'stixOperational', 'stix', 'moduleErrors', 'moduleTypes', 'dbDiagnostics', 'dbSchemaDiagnostics', 'redisInfo', 'attachmentScan');
             }
             // check whether the files are writeable
             $writeableDirs = $this->Server->writeableDirsDiagnostics($diagnostic_errors);
@@ -1098,7 +1166,7 @@ class ServersController extends AppController
                 $dump = array(
                         'version' => $version,
                         'phpSettings' => $phpSettings,
-                        'gpgStatus' => $gpgErrors[$gpgStatus],
+                        'gpgStatus' => $gpgErrors[$gpgStatus['status']],
                         'proxyStatus' => $proxyErrors[$proxyStatus],
                         'zmqStatus' => $zmqStatus,
                         'stix' => $stix,
@@ -1106,6 +1174,9 @@ class ServersController extends AppController
                         'writeableDirs' => $writeableDirs,
                         'writeableFiles' => $writeableFiles,
                         'readableFiles' => $readableFiles,
+                        'dbDiagnostics' => $dbDiagnostics,
+                        'dbSchemaDiagnostics' => $dbSchemaDiagnostics,
+                        'redisInfo' => $redisInfo,
                         'finalSettings' => $dumpResults,
                         'extensions' => $extensions,
                         'workers' => $worker_array
@@ -1129,6 +1200,9 @@ class ServersController extends AppController
             $this->set('phpversion', phpversion());
             $this->set('phpmin', $this->phpmin);
             $this->set('phprec', $this->phprec);
+            $this->set('pythonmin', $this->pythonmin);
+            $this->set('pythonrec', $this->pythonrec);
+            $this->set('pymisp', $this->pymisp);
         }
     }
 
@@ -1137,12 +1211,23 @@ class ServersController extends AppController
         if (!$this->_isSiteAdmin() || !$this->request->is('post')) {
             throw new MethodNotAllowedException();
         }
-        $validTypes = array('default', 'email', 'scheduler', 'cache', 'prio');
+        $validTypes = array('default', 'email', 'scheduler', 'cache', 'prio', 'update');
         if (!in_array($type, $validTypes)) {
             throw new MethodNotAllowedException('Invalid worker type.');
         }
         $prepend = '';
         if ($type != 'scheduler') {
+            $workerIssueCount = 0;
+            $workerDiagnostic = $this->Server->workerDiagnostics($workerIssueCount);
+            if ($type == 'update' && isset($workerDiagnostic['update']['ok']) && $workerDiagnostic['update']['ok']) {
+                $message = __('Only one `update` worker can run at a time');
+                if ($this->_isRest()) {
+                    return $this->RestResponse->saveFailResponse('Servers', 'startWorker', false, $message, $this->response->type());
+                } else {
+                    $this->Flash->error($message);
+                    $this->redirect('/servers/serverSettings/workers');
+                }
+            }
             shell_exec($prepend . APP . 'Console' . DS . 'cake CakeResque.CakeResque start --interval 5 --queue ' . $type .' > /dev/null 2>&1 &');
         } else {
             shell_exec($prepend . APP . 'Console' . DS . 'cake CakeResque.CakeResque startscheduler -i 5 > /dev/null 2>&1 &');
@@ -1173,8 +1258,12 @@ class ServersController extends AppController
 
     public function getWorkers()
     {
-        $issues = 0;
-        $worker_array = $this->Server->workerDiagnostics($issues);
+        if (Configure::read('MISP.background_jobs')) {
+            $workerIssueCount = 0;
+            $worker_array = $this->Server->workerDiagnostics($workerIssueCount);
+        } else {
+            $worker_array = [__('Background jobs not enabled')];
+        }
         return $this->RestResponse->viewData($worker_array);
     }
 
@@ -1204,6 +1293,90 @@ class ServersController extends AppController
             return $this->Server->checkVersion($json_decoded_tags[$i]->name);
         } else {
             return false;
+        }
+    }
+
+    public function idTranslator() {
+
+        // The id translation feature is limited to people from the host org
+        if (!$this->_isSiteAdmin() && $this->Auth->user('org_id') != Configure::read('MISP.host_org_id')) {
+            throw new MethodNotAllowedException(__('You don\'t have the required privileges to do that.'));
+        }
+
+        //We retrieve the list of remote servers that we can query
+        $options = array();
+        $options['conditions'] = array("pull" => true);
+        $servers = $this->Server->find('all', $options);
+
+        // We generate the list of servers for the dropdown
+        $displayServers = array();
+        foreach($servers as $s) {
+            $displayServers[] = array('name' => $s['Server']['name'],
+                                      'value' => $s['Server']['id']);
+        }
+        $this->set('servers', $displayServers);
+
+        if ($this->request->is('post')) {
+            $remote_events = array();
+            if(!empty($this->request->data['Event']['uuid']) &&  $this->request->data['Event']['local'] == "local") {
+                $local_event = $this->Event->fetchSimpleEvent($this->Auth->user(), $this->request->data['Event']['uuid']);
+            } else if (!empty($this->request->data['Event']['uuid']) && $this->request->data['Event']['local'] == "remote" && !empty($this->request->data['Server']['id'])) {
+                //We check on the remote server for any event with this id and try to find a match locally
+                $conditions = array('AND' => array('Server.id' => $this->request->data['Server']['id'], 'Server.pull' => true));
+                $remote_server = $this->Server->find('first', array('conditions' => $conditions));
+                if(!empty($remote_server)) {
+                    try {
+                        $remote_event = $this->Event->downloadEventFromServer($this->request->data['Event']['uuid'], $remote_server, null, true);
+                    } catch (Exception $e) {
+                        $error_msg = __("Issue while contacting the remote server to retrieve event information");
+                        $this->logException($error_msg, $e);
+                        $this->Flash->error($error_msg);
+                        return;
+                    }
+
+                    $local_event = $this->Event->fetchSimpleEvent($this->Auth->user(), $remote_event[0]['uuid']);
+                    //we record it to avoid re-querying the same server in the 2nd phase
+                    if(!empty($local_event)) {
+                        $remote_events[] = array(
+                            "server_id" => $remote_server['Server']['id'],
+                            "server_name" => $remote_server['Server']['name'],
+                            "url" => $remote_server['Server']['url']."/events/view/".$remote_event[0]['id'],
+                            "remote_id" => $remote_event[0]['id']
+                        );
+                    }
+                }
+            }
+            if(empty($local_event)) {
+                $this->Flash->error( __("This event could not be found or you don't have permissions to see it."));
+                return;
+            } else {
+                $this->Flash->success(__('The event has been found.'));
+            }
+
+            // In the second phase, we query all configured sync servers to get their info on the event
+            foreach($servers as $s) {
+                // We check if the server was not already contacted in phase 1
+                if(count($remote_events) > 0 && $remote_events[0]['server_id'] == $s['Server']['id']) {
+                    continue;
+                }
+
+                try {
+                    $remote_event = $this->Event->downloadEventFromServer($local_event['Event']['uuid'], $s, null, true);
+                    $remote_event_id = $remote_event[0]['id'];
+                } catch (Exception $e) {
+                    $this->logException("Couldn't download event from server", $e);
+                    $remote_event_id = null;
+                }
+                $remote_events[] = array(
+                    "server_id" => $s['Server']['id'],
+                    "server_name" => $s['Server']['name'],
+                    "url" => isset($remote_event_id) ? $s['Server']['url']."/events/view/".$remote_event_id : $s['Server']['url'],
+                    "remote_id" => isset($remote_event_id) ? $remote_event_id : false
+                );
+            }
+
+            $this->set('local_event', $local_event);
+            $this->set('remote_events', $remote_events);
         }
     }
 
@@ -1243,21 +1416,21 @@ class ServersController extends AppController
         }
 
         $setting = $this->Server->getSettingData($setting_name);
+        if ($setting === false) {
+            throw new NotFoundException(__('Setting %s is invalid.', $setting_name));
+        }
         if (!empty($setting['cli_only'])) {
             throw new MethodNotAllowedException(__('This setting can only be edited via the CLI.'));
         }
         if ($this->request->is('get')) {
-            if ($setting != null) {
-                $value = Configure::read($setting['name']);
-                if ($value) {
-                    $setting['value'] = $value;
-                }
-                $setting['setting'] = $setting['name'];
+            $value = Configure::read($setting['name']);
+            if (isset($value)) {
+                $setting['value'] = $value;
             }
+            $setting['setting'] = $setting['name'];
             if (isset($setting['optionsSource']) && !empty($setting['optionsSource'])) {
                 $setting['options'] = $this->{'__load' . $setting['optionsSource']}();
             }
-            $subGroup = 'general';
             $subGroup = explode('.', $setting['name']);
             if ($subGroup[0] === 'Plugin') {
                 $subGroup = explode('_', $subGroup[1])[0];
@@ -1271,8 +1444,7 @@ class ServersController extends AppController
                 $this->set('setting', $setting);
                 $this->render('ajax/server_settings_edit');
             }
-        }
-        if ($this->request->is('post')) {
+        } else if ($this->request->is('post')) {
             if (!isset($this->request->data['Server'])) {
                 $this->request->data = array('Server' => $this->request->data);
             }
@@ -1295,7 +1467,7 @@ class ServersController extends AppController
             $this->loadModel('Log');
             if (!is_writeable(APP . 'Config/config.php')) {
                 $this->Log->create();
-                $result = $this->Log->save(array(
+                $this->Log->save(array(
                         'org' => $this->Auth->user('Organisation')['name'],
                         'model' => 'Server',
                         'model_id' => 0,
@@ -1328,6 +1500,18 @@ class ServersController extends AppController
         }
     }
 
+    public function killAllWorkers($force = false)
+    {
+        if (!$this->request->is('post')) {
+            throw new MethodNotAllowedException();
+        }
+        $this->Server->killAllWorkers($this->Auth->user(), $force);
+        if ($this->_isRest()) {
+            return $this->RestResponse->saveSuccessResponse('Server', 'killAllWorkers', false, $this->response->type(), __('Killing workers.'));
+        }
+        $this->redirect(array('controller' => 'servers', 'action' => 'serverSettings', 'workers'));
+    }
+
     public function restartWorkers()
     {
         if (!$this->_isSiteAdmin() || !$this->request->is('post')) {
@@ -1336,6 +1520,18 @@ class ServersController extends AppController
         $this->Server->restartWorkers($this->Auth->user());
         if ($this->_isRest()) {
             return $this->RestResponse->saveSuccessResponse('Server', 'restartWorkers', false, $this->response->type(), __('Restarting workers.'));
+        }
+        $this->redirect(array('controller' => 'servers', 'action' => 'serverSettings', 'workers'));
+    }
+
+    public function restartDeadWorkers()
+    {
+        if (!$this->_isSiteAdmin() || !$this->request->is('post')) {
+            throw new MethodNotAllowedException();
+        }
+        $this->Server->restartDeadWorkers($this->Auth->user());
+        if ($this->_isRest()) {
+            return $this->RestResponse->saveSuccessResponse('Server', 'restartDeadWorkers', false, $this->response->type(), __('Restarting workers.'));
         }
         $this->redirect(array('controller' => 'servers', 'action' => 'serverSettings', 'workers'));
     }
@@ -1455,35 +1651,52 @@ class ServersController extends AppController
         }
     }
 
+    public function getRemoteUser($id)
+    {
+        $this->Server->id = $id;
+        if (!$this->Server->exists()) {
+            throw new NotFoundException(__('Invalid server'));
+        }
+        $user = $this->Server->getRemoteUser($id);
+        if (empty($user)) {
+            throw new NotFoundException(__('Invalid user or user not found.'));
+        } else {
+            return $this->RestResponse->viewData($user);
+        }
+    }
+
     public function testConnection($id = false)
     {
         if (!$this->Auth->user('Role')['perm_sync'] && !$this->Auth->user('Role')['perm_site_admin']) {
             throw new MethodNotAllowedException('You don\'t have permission to do that.');
         }
-        $this->Server->id = $id;
-        if (!$this->Server->exists()) {
+
+        $server = $this->Server->find('first', ['conditions' => ['Server.id' => $id]]);
+        if (!$server) {
             throw new NotFoundException(__('Invalid server'));
         }
-        $result = $this->Server->runConnectionTest($id);
+        $result = $this->Server->runConnectionTest($server);
         if ($result['status'] == 1) {
-            $version = json_decode($result['message'], true);
-            if (isset($version['version']) && preg_match('/^[0-9]+\.+[0-9]+\.[0-9]+$/', $version['version'])) {
+            if (isset($result['info']['version']) && preg_match('/^[0-9]+\.+[0-9]+\.[0-9]+$/', $result['info']['version'])) {
                 $perm_sync = false;
-                if (isset($version['perm_sync'])) {
-                    $perm_sync = $version['perm_sync'];
+                if (isset($result['info']['perm_sync'])) {
+                    $perm_sync = $result['info']['perm_sync'];
+                }
+                $perm_sighting = false;
+                if (isset($result['info']['perm_sighting'])) {
+                    $perm_sighting = $result['info']['perm_sighting'];
                 }
                 App::uses('Folder', 'Utility');
                 $file = new File(ROOT . DS . 'VERSION.json', true);
                 $local_version = json_decode($file->read(), true);
                 $file->close();
-                $version = explode('.', $version['version']);
+                $version = explode('.', $result['info']['version']);
                 $mismatch = false;
                 $newer = false;
                 $parts = array('major', 'minor', 'hotfix');
                 if ($version[0] == 2 && $version[1] == 4 && $version[2] > 68) {
-                    $post = $this->Server->runPOSTTest($id);
+                    $post = $this->Server->runPOSTTest($server);
                 }
-                $testPost = false;
                 foreach ($parts as $k => $v) {
                     if (!$mismatch) {
                         if ($version[$k] > $local_version[$v]) {
@@ -1498,8 +1711,12 @@ class ServersController extends AppController
                 if (!$mismatch && $version[2] < 111) {
                     $mismatch = 'proposal';
                 }
-                if (!$perm_sync) {
+                if (!$perm_sync && !$perm_sighting) {
                     $result['status'] = 7;
+                    return new CakeResponse(array('body'=> json_encode($result), 'type' => 'json'));
+                }
+                if (!$perm_sync && $perm_sighting) {
+                    $result['status'] = 8;
                     return new CakeResponse(array('body'=> json_encode($result), 'type' => 'json'));
                 }
                 return new CakeResponse(
@@ -1511,7 +1728,8 @@ class ServersController extends AppController
                                 'version' => implode('.', $version),
                                 'mismatch' => $mismatch,
                                 'newer' => $newer,
-                                'post' => isset($post) ? $post : 'too old'
+                                'post' => isset($post) ? $post : 'too old',
+                                'client_certificate' => $result['client_certificate'],
                                 )
                             ),
                             'type' => 'json'
@@ -1561,6 +1779,7 @@ class ServersController extends AppController
         $result = $pubSubTool->statusCheck();
         if (!empty($result)) {
             $this->set('events', $result['publishCount']);
+            $this->set('messages', $result['messageCount']);
             $this->set('time', date('Y/m/d H:i:s', $result['timestamp']));
             $this->set('time2', date('Y/m/d H:i:s', $result['timestampSettings']));
         }
@@ -1599,7 +1818,12 @@ class ServersController extends AppController
             throw new MethodNotAllowedException('This action requires API access.');
         }
         $versionArray = $this->Server->checkMISPVersion();
-        $this->set('response', array('version' => $versionArray['major'] . '.' . $versionArray['minor'] . '.' . $versionArray['hotfix'], 'perm_sync' => $this->userRole['perm_sync']));
+        $this->set('response', array(
+            'version' => $versionArray['major'] . '.' . $versionArray['minor'] . '.' . $versionArray['hotfix'],
+            'perm_sync' => $this->userRole['perm_sync'],
+            'perm_sighting' => $this->userRole['perm_sighting'],
+            'perm_galaxy_editor' => $this->userRole['perm_galaxy_editor'],
+        ));
         $this->set('_serialize', 'response');
     }
 
@@ -1607,11 +1831,6 @@ class ServersController extends AppController
     {
         $this->set('response', array('version' => $this->pyMispVersion));
         $this->set('_serialize', 'response');
-    }
-
-    public function getGit()
-    {
-        $status = $this->Server->getCurrentGitStatus();
     }
 
     public function checkout()
@@ -1624,11 +1843,17 @@ class ServersController extends AppController
         if ($this->request->is('post')) {
             $status = $this->Server->getCurrentGitStatus();
             $raw = array();
-            $update = $this->Server->update($status, $raw);
+            if (empty($status['branch'])) { // do not try to update if you are not on branch
+                $msg = 'Update failed, you are not on branch';
+                $raw[] = $msg;
+                $update = $msg;
+            } else {
+                $update = $this->Server->update($status, $raw);
+            }
             if ($this->_isRest()) {
                 return $this->RestResponse->viewData(array('results' => $raw), $this->response->type());
             } else {
-                return new CakeResponse(array('body'=> $update, 'type' => 'txt'));
+                return new CakeResponse(array('body' => $update, 'type' => 'txt'));
             }
         } else {
             $branch = $this->Server->getCurrentBranch();
@@ -1651,7 +1876,7 @@ class ServersController extends AppController
             'recommendBackup' => false,
             'exitOnError' => false,
             'requirements' => '',
-            'url' => '/'
+            'url' => $this->baseurl . '/'
         );
         foreach($actions as $id => $action) {
             foreach($default_fields as $field => $value) {
@@ -1666,36 +1891,49 @@ class ServersController extends AppController
         $this->set('updateLocked', $this->Server->isUpdateLocked());
     }
 
-    public function updateProgress()
+    public function updateProgress($ajaxHtml=false)
     {
         if (!$this->_isSiteAdmin()) {
             throw new MethodNotAllowedException('You are not authorised to do that.');
         }
-        $update_progress = $this->Server->getUpdateProgress();
-        $current_index = $update_progress['current'];
-        $current_command = !isset($update_progress['commands'][$current_index]) ? '' : $update_progress['commands'][$current_index];
-        $lookup_string = preg_replace('/\s{2,}/', '', substr($current_command, 0, -1));
-        $sql_info = $this->Server->query("SELECT * FROM INFORMATION_SCHEMA.PROCESSLIST;");
-        if (empty($sql_info)) {
-            $update_progress['process_list'] = array();
+
+        $this->AdminSetting = ClassRegistry::init('AdminSetting');
+        $dbVersion = $this->AdminSetting->getSetting('db_version');
+        $updateProgress = $this->Server->getUpdateProgress();
+        $updateProgress['db_version'] = $dbVersion;
+        $maxUpdateNumber = max(array_keys($this->Server->db_changes));
+        $updateProgress['complete_update_remaining'] = max($maxUpdateNumber - $dbVersion, 0);
+        $updateProgress['update_locked'] = $this->Server->isUpdateLocked();
+        $updateProgress['lock_remaining_time'] = $this->Server->getLockRemainingTime();
+        $updateProgress['update_fail_number_reached'] = $this->Server->UpdateFailNumberReached();
+        $currentIndex = $updateProgress['current'];
+        $currentCommand = !isset($updateProgress['commands'][$currentIndex]) ? '' : $updateProgress['commands'][$currentIndex];
+        $lookupString = preg_replace('/\s{2,}/', '', substr($currentCommand, 0, -1));
+        $sqlInfo = $this->Server->query("SELECT * FROM INFORMATION_SCHEMA.PROCESSLIST;");
+        if (empty($sqlInfo)) {
+            $updateProgress['process_list'] = array();
         } else {
             // retrieve current update process
-            foreach($sql_info as $row) {
-                if (preg_replace('/\s{2,}/', '', $row['PROCESSLIST']['INFO']) == $lookup_string) {
-                    $sql_info = $row['PROCESSLIST'];
+            foreach($sqlInfo as $row) {
+                if (preg_replace('/\s{2,}/', '', $row['PROCESSLIST']['INFO']) == $lookupString) {
+                    $sqlInfo = $row['PROCESSLIST'];
                     break;
                 }
             }
-            $update_progress['process_list'] = array();
-            $update_progress['process_list']['STATE'] = isset($sql_info['STATE']) ? $sql_info['STATE'] : '';
-            $update_progress['process_list']['PROGRESS'] = isset($sql_info['PROGRESS']) ? $sql_info['PROGRESS'] : 0;
-            $update_progress['process_list']['STAGE'] = isset($sql_info['STAGE']) ? $sql_info['STAGE'] : 0;
-            $update_progress['process_list']['MAX_STAGE'] = isset($sql_info['MAX_STAGE']) ? $sql_info['MAX_STAGE'] : 0;
+            $updateProgress['process_list'] = array();
+            $updateProgress['process_list']['STATE'] = isset($sqlInfo['STATE']) ? $sqlInfo['STATE'] : '';
+            $updateProgress['process_list']['PROGRESS'] = isset($sqlInfo['PROGRESS']) ? $sqlInfo['PROGRESS'] : 0;
+            $updateProgress['process_list']['STAGE'] = isset($sqlInfo['STAGE']) ? $sqlInfo['STAGE'] : 0;
+            $updateProgress['process_list']['MAX_STAGE'] = isset($sqlInfo['MAX_STAGE']) ? $sqlInfo['MAX_STAGE'] : 0;
         }
-        if ($this->request->is('ajax')) {
-            return $this->RestResponse->viewData(h($update_progress), $this->response->type());
+        $this->set('ajaxHtml', $ajaxHtml);
+        if ($this->request->is('ajax') && $ajaxHtml) {
+            $this->set('updateProgress', $updateProgress);
+            $this->layout = false;
+        } elseif ($this->request->is('ajax') || $this->_isRest()) {
+            return $this->RestResponse->viewData(h($updateProgress), $this->response->type());
         } else {
-            $this->set('updateProgress', $update_progress);
+            $this->set('updateProgress', $updateProgress);
         }
     }
 
@@ -1736,19 +1974,23 @@ class ServersController extends AppController
             }
             $curl = '';
             $python = '';
-            $result = $this->__doRestQuery($request, $curl, $python);
-            $this->set('curl', $curl);
-            $this->set('python', $python);
-            if (!$result) {
-                $this->Flash->error('Something went wrong. Make sure you set the http method, body (when sending POST requests) and URL correctly.');
-            } else {
-                $this->set('data', $result);
+            try {
+                $result = $this->__doRestQuery($request, $curl, $python);
+                $this->set('curl', $curl);
+                $this->set('python', $python);
+                if (!$result) {
+                    $this->Flash->error('Something went wrong. Make sure you set the http method, body (when sending POST requests) and URL correctly.');
+                } else {
+                    $this->set('data', $result);
+                }
+            } catch (Exception $e) {
+                $this->Flash->error(__('Something went wrong. %s', $e->getMessage()));
             }
         }
-        $header =
-            'Authorization: ' . $this->Auth->user('authkey') . PHP_EOL .
-            'Accept: application/json' . PHP_EOL .
-            'Content-Type: application/json';
+        $header = sprintf(
+            "Authorization: %s \nAccept: application/json\nContent-type: application/json",
+            empty(Configure::read('Security.advanced_authkeys')) ? $this->Auth->user('authkey') : __('YOUR_API_KEY')
+        );
         $this->set('header', $header);
         $this->set('allValidApis', $allValidApis);
         // formating for optgroup
@@ -1760,21 +2002,37 @@ class ServersController extends AppController
         $this->set('allValidApisFieldsContraint', $allValidApisFieldsContraint);
     }
 
-    private function __doRestQuery($request, &$curl = false, &$python = false)
+    /**
+     * @param array $request
+     * @param string $curl
+     * @param string $python
+     * @return array|false
+     */
+    private function __doRestQuery(array $request, &$curl = false, &$python = false)
     {
         App::uses('SyncTool', 'Tools');
         $params = array();
         $this->loadModel('RestClientHistory');
         $this->RestClientHistory->create();
         $date = new DateTime();
+        $logHeaders = $request['header'];
+        if (!empty(Configure::read('Security.advanced_authkeys'))) {
+            $logHeaders = explode("\n", $request['header']);
+            foreach ($logHeaders as $k => $header) {
+                if (strpos($header, 'Authorization') !== false) {
+                    $logHeaders[$k] = 'Authorization: ' . __('YOUR_API_KEY');
+                }
+            }
+            $logHeaders = implode("\n", $logHeaders);
+        }
         $rest_history_item = array(
             'org_id' => $this->Auth->user('org_id'),
             'user_id' => $this->Auth->user('id'),
-            'headers' => $request['header'],
+            'headers' => $logHeaders,
             'body' => empty($request['body']) ? '' : $request['body'],
             'url' => $request['url'],
             'http_method' => $request['method'],
-            'use_full_path' => $request['use_full_path'],
+            'use_full_path' => empty($request['use_full_path']) ? false : $request['use_full_path'],
             'show_result' => $request['show_result'],
             'skip_ssl' => $request['skip_ssl_validation'],
             'bookmark' => $request['bookmark'],
@@ -1782,15 +2040,15 @@ class ServersController extends AppController
             'timestamp' => $date->getTimestamp()
         );
         if (!empty($request['url'])) {
-            if (empty($request['use_full_path'])) {
+            if (empty($request['use_full_path']) || empty(Configure::read('Security.rest_client_enable_arbitrary_urls'))) {
                 $path = preg_replace('#^(://|[^/?])+#', '', $request['url']);
-                $url = Configure::read('MISP.baseurl') . $path;
+                $url = empty(Configure::read('Security.rest_client_baseurl')) ? (Configure::read('MISP.baseurl') . $path) : (Configure::read('Security.rest_client_baseurl') . $path);
                 unset($request['url']);
             } else {
                 $url = $request['url'];
             }
         } else {
-            throw new InvalidArgumentException('Url not set.');
+            throw new InvalidArgumentException('URL not set.');
         }
         if (!empty($request['skip_ssl_validation'])) {
             $params['ssl_verify_peer'] = false;
@@ -1853,7 +2111,8 @@ class ServersController extends AppController
             return false;
         }
         $view_data['duration'] = microtime(true) - $start;
-        $view_data['duration'] = round($view_data['duration'] * 1000, 2) . 'ms';
+        $view_data['duration'] = round($view_data['duration'] * 1000, 2) . ' ms';
+        $view_data['url'] = $url;
         $view_data['code'] =  $response->code;
         $view_data['headers'] = $response->headers;
         if (!empty($request['show_result'])) {
@@ -1899,16 +2158,16 @@ misp_verifycert = %s
 relative_path = \'%s\'
 body = %s
 
-from pymisp import PyMISP
+from pymisp import ExpandedPyMISP
 
-misp = PyMISP(misp_url, misp_key, misp_verifycert)
+misp = ExpandedPyMISP(misp_url, misp_key, misp_verifycert)
 misp.direct_call(relative_path, body)
 ',
             $baseurl,
             $request['header']['Authorization'],
             $verifyCert,
             $relative,
-            (empty($request['body']) ? 'Null' : $request['body'])
+            (empty($request['body']) ? 'None' : $request['body'])
         );
         return $python_script;
     }
@@ -1931,7 +2190,7 @@ misp.direct_call(relative_path, body)
             $curl = sprintf(
                 'curl \%s -d \'%s\' \%s -H "Authorization: %s" \%s -H "Accept: %s" \%s -H "Content-type: %s" \%s -X POST %s',
                 PHP_EOL,
-                json_encode(json_decode($request['body']), true),
+                json_encode(json_decode($request['body'])),
                 PHP_EOL,
                 $request['header']['Authorization'],
                 PHP_EOL,
@@ -1950,9 +2209,11 @@ misp.direct_call(relative_path, body)
         $relative_path = $this->request->data['url'];
         $result = $this->RestResponse->getApiInfo($relative_path);
         if ($this->_isRest()) {
-            return $this->RestResponse->viewData($result, $this->response->type(), false, true);
+            if (!empty($result)) {
+                $result['api_info'] = $result;
+            }
+            return $this->RestResponse->viewData($result, $this->response->type());
         } else {
-            $result = json_decode($result, true);
             if (empty($result)) {
                 return $this->RestResponse->viewData('&nbsp;', $this->response->type());
             }
@@ -2143,5 +2404,74 @@ misp.direct_call(relative_path, body)
             $message = __('Priority could not be changed.');
             return $this->RestResponse->saveFailResponse('Servers', 'changePriority', $id, $message, $this->response->type());
         }
+    }
+
+    public function releaseUpdateLock()
+    {
+        if (!$this->request->is('post')) {
+            throw new MethodNotAllowedException(__('This endpoint expects POST requests.'));
+        }
+        if (!$this->_isSiteAdmin()) {
+            throw new MethodNotAllowedException(__('Only site admin accounts can release the update lock.'));
+        }
+        $this->Server->changeLockState(false);
+        $this->Server->resetUpdateFailNumber();
+        $this->redirect(array('action' => 'updateProgress'));
+    }
+
+    public function dbSchemaDiagnostic()
+    {
+        if (!$this->_isSiteAdmin()) {
+            throw new MethodNotAllowedException(__('Only site admin accounts get the DB schema diagnostic.'));
+        }
+        $dbSchemaDiagnostics = $this->Server->dbSchemaDiagnostic();
+        if ($this->_isRest()) {
+            return $this->RestResponse->viewData($dbSchemaDiagnostics, $this->response->type());
+        } else {
+            $this->set('checkedTableColumn', $dbSchemaDiagnostics['checked_table_column']);
+            $this->set('dbSchemaDiagnostics', $dbSchemaDiagnostics['diagnostic']);
+            $this->set('dbIndexDiagnostics', $dbSchemaDiagnostics['diagnostic_index']);
+            $this->set('expectedDbVersion', $dbSchemaDiagnostics['expected_db_version']);
+            $this->set('actualDbVersion', $dbSchemaDiagnostics['actual_db_version']);
+            $this->set('error', $dbSchemaDiagnostics['error']);
+            $this->set('remainingLockTime', $dbSchemaDiagnostics['remaining_lock_time']);
+            $this->set('updateFailNumberReached', $dbSchemaDiagnostics['update_fail_number_reached']);
+            $this->set('updateLocked', $dbSchemaDiagnostics['update_locked']);
+            $this->set('dataSource', $dbSchemaDiagnostics['dataSource']);
+            $this->set('columnPerTable', $dbSchemaDiagnostics['columnPerTable']);
+            $this->set('indexes', $dbSchemaDiagnostics['indexes']);
+            $this->render('/Elements/healthElements/db_schema_diagnostic');
+        }
+    }
+
+    public function viewDeprecatedFunctionUse()
+    {
+        $data = $this->Deprecation->getDeprecatedAccessList($this->Server);
+        if ($this->_isRest()) {
+            return $this->RestResponse->viewData($data, $this->response->type());
+        } else {
+            $this->layout = false;
+            $this->set('data', $data);
+        }
+    }
+
+    /**
+     * List all tags for the rule picker.
+     *
+     * @return array
+     */
+    private function __getTags()
+    {
+        $this->loadModel('Tag');
+        $list = $this->Tag->find('list', array(
+            'recursive' => -1,
+            'order' => array('LOWER(TRIM(Tag.name))' => 'ASC'),
+            'fields' => array('name'),
+        ));
+        $allTags = array();
+        foreach ($list as $id => $name) {
+            $allTags[] = array('id' => $id, 'name' => trim($name));
+        }
+        return $allTags;
     }
 }

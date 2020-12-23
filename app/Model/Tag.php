@@ -55,7 +55,10 @@ class Tag extends AppModel
         ),
         'TagCollectionTag' => array(
             'dependent' => true
-        )
+        ),
+        'GalaxyClusterRelationTag' => array(
+            'dependent' => true
+        ),
     );
 
     public $belongsTo = array(
@@ -68,6 +71,10 @@ class Tag extends AppModel
             'foreignKey' => 'user_id',
         )
     );
+
+    public $reGalaxy = '/misp-galaxy:[^:="]+="[^:="]+/i';
+    public $reCustomGalaxy = '/misp-galaxy:[^:="]+="[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}"/i';
+    private $tagOverrides = false;
 
     public function beforeValidate($options = array())
     {
@@ -84,6 +91,8 @@ class Tag extends AppModel
         if (!isset($this->data['Tag']['exportable'])) {
             $this->data['Tag']['exportable'] = 1;
         }
+        $this->data['Tag']['is_galaxy'] = preg_match($this->reGalaxy, $this->data['Tag']['name']);
+        $this->data['Tag']['is_custom_galaxy'] = preg_match($this->reCustomGalaxy, $this->data['Tag']['name']);
         return true;
     }
 
@@ -133,6 +142,12 @@ class Tag extends AppModel
         }
     }
 
+    public function afterFind($results, $primary = false)
+    {
+        $results = $this->checkForOverride($results);
+        return $results;
+    }
+
     public function validateColour($fields)
     {
         if (!preg_match('/^#[0-9a-f]{6}$/i', $fields['colour'])) {
@@ -153,6 +168,17 @@ class Tag extends AppModel
         } else {
             return $tagId['Tag']['id'];
         }
+    }
+
+    public function fetchUsableTags(array $user)
+    {
+        $conditions = array();
+        if (!$user['Role']['perm_site_admin']) {
+            $conditions['Tag.org_id'] = array(0, $user['User']['org_id']);
+            $conditions['Tag.user_id'] = array(0, $user['User']['id']);
+            $conditions['Tag.hide_tag'] = 0;
+        }
+        return $this->find('all', array('conditions' => $conditions, 'recursive' => -1));
     }
 
     // find all of the tag ids that belong to the accepted tag names and the rejected tag names
@@ -299,14 +325,14 @@ class Tag extends AppModel
         return $ids;
     }
 
-    public function captureTag($tag, $user)
+    public function captureTag($tag, $user, $force=false)
     {
         $existingTag = $this->find('first', array(
                 'recursive' => -1,
                 'conditions' => array('LOWER(name)' => strtolower($tag['name']))
         ));
         if (empty($existingTag)) {
-            if ($user['Role']['perm_tag_editor']) {
+            if ($force || $user['Role']['perm_tag_editor']) {
                 $this->create();
                 if (!isset($tag['colour']) || empty($tag['colour'])) {
                     $tag['colour'] = $this->random_color();
@@ -327,10 +353,16 @@ class Tag extends AppModel
         } else {
             if (
                 !$user['Role']['perm_site_admin'] &&
-                $existingTag['Tag']['org_id'] != 0 &&
-                $existingTag['Tag']['org_id'] != $user['org_id'] &&
-                $existingTag['Tag']['user_id'] != 0 &&
-                $existingTag['Tag']['user_id'] != $user['id']
+                (
+                    (
+                        $existingTag['Tag']['org_id'] != 0 &&
+                        $existingTag['Tag']['org_id'] != $user['org_id']
+                    ) ||
+                    (
+                        $existingTag['Tag']['user_id'] != 0 &&
+                        $existingTag['Tag']['user_id'] != $user['id']
+                    )
+                )
             ) {
                 return false;
             }
@@ -407,11 +439,50 @@ class Tag extends AppModel
         return ($this->saveAll($tags));
     }
 
+    /**
+    * Recover user_id from the session and override numerical_values from userSetting
+    */
+    public function checkForOverride($tags)
+    {
+        $userId = Configure::read('CurrentUserId');
+        if ($this->tagOverrides === false && $userId > 0) {
+            $this->UserSetting = ClassRegistry::init('UserSetting');
+            $this->tagOverrides = $this->UserSetting->getTagNumericalValueOverride($userId);
+        }
+        foreach ($tags as $k => $tag) {
+            if (isset($tag['Tag']['name'])) {
+                $tagName = $tag['Tag']['name'];
+                if (isset($this->tagOverrides[$tagName]) && is_numeric($this->tagOverrides[$tagName])) {
+                    $tags[$k]['Tag']['original_numerical_value'] = isset($tags[$k]['Tag']['numerical_value']) ? $tags[$k]['Tag']['numerical_value'] : '';
+                    $tags[$k]['Tag']['numerical_value'] = $this->tagOverrides[$tagName];
+                }
+            }
+        }
+        return $tags;
+    }
+
+    public function getTagsByName($tag_names, $containTagConnectors = true)
+    {
+        $contain = array('EventTag', 'AttributeTag');
+        $tag_params = array(
+                'recursive' => -1,
+                'conditions' => array('name' => $tag_names)
+        );
+        if ($containTagConnectors) {
+            $tag_params['contain'] = $contain;
+        }
+        $tags_temp = $this->find('all', $tag_params);
+        $tags = array();
+        foreach ($tags_temp as $temp) {
+            $tags[strtoupper($temp['Tag']['name'])] = $temp;
+        }
+        return $tags;
+    }
+
     public function getTagsForNamespace($namespace, $containTagConnectors = true)
     {
 
-        $contain = array('EventTag');
-        $contain[] = 'AttributeTag';
+        $contain = array('EventTag', 'AttributeTag');
         $tag_params = array(
                 'recursive' => -1,
                 'conditions' => array('UPPER(name) LIKE' => strtoupper($namespace) . '%'),

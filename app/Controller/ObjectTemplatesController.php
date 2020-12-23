@@ -1,7 +1,9 @@
 <?php
-
 App::uses('AppController', 'Controller');
 
+/**
+ * @property ObjectTemplate  $ObjectTemplate
+ */
 class ObjectTemplatesController extends AppController
 {
     public $components = array('Security' ,'RequestHandler', 'Session');
@@ -29,12 +31,12 @@ class ObjectTemplatesController extends AppController
         $items = array();
         $items[] = array(
             'name' => __('All Objects'),
-            'value' => "/ObjectTemplates/objectChoice/" . h($event_id) . "/" . "0"
+            'value' => $this->baseurl . "/ObjectTemplates/objectChoice/" . h($event_id) . "/" . "0"
         );
         foreach($metas as $meta) {
             $items[] = array(
                 'name' => $meta,
-                'value' => "/ObjectTemplates/objectChoice/" . h($event_id) . "/" . h($meta)
+                'value' => $this->baseurl . "/ObjectTemplates/objectChoice/" . h($event_id) . "/" . h($meta)
             );
         }
 
@@ -134,19 +136,20 @@ class ObjectTemplatesController extends AppController
         }
         $this->ObjectTemplate->id = $id;
         if (!$this->ObjectTemplate->exists()) {
-            throw new NotFoundException('Invalid ObjectTemplate');
+            throw new NotFoundException('Invalid Object Template');
         }
         if ($this->ObjectTemplate->delete()) {
             if ($this->_isRest()) {
                 return $this->RestResponse->saveSuccessResponse('ObjectTemplates', 'admin_delete', $id, $this->response->type());
             } else {
-                $this->Flash->success(__('ObjectTemplate deleted'));
+                $this->Flash->success(__('Object Template deleted'));
             }
-        }
-        if ($this->_isRest()) {
-            return $this->RestResponse->saveFailResponse('ObjectTemplates', 'admin_delete', $id, $this->ObjectTemplate->validationErrors, $this->response->type());
         } else {
-            $this->Flash->error('ObjectTemplate could not be deleted');
+            if ($this->_isRest()) {
+                return $this->RestResponse->saveFailResponse('ObjectTemplates', 'admin_delete', $id, $this->ObjectTemplate->validationErrors, $this->response->type());
+            } else {
+                $this->Flash->error('Object Template could not be deleted');
+            }
         }
         $this->redirect($this->referer());
     }

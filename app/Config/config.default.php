@@ -17,11 +17,12 @@ $config = array(
 			'org'                            => 'ORGNAME',
 			'showorg'                        => true,
 			'threatlevel_in_email_subject'   => true,
-			'email_subject_TLP_string'       => 'TLP Amber',
+            'email_subject_TLP_string'       => 'tlp:amber',
 			'email_subject_tag'              => 'tlp',
 			'email_subject_include_tag_name' => true,
 			'background_jobs'                => true,
 			'cached_attachments'             => true,
+			'osuser'                         => 'www-data',
 			'email'                          => 'email@address.com',
 			'contact'                        => 'email@address.com',
 			'cveurl'                         => 'https://cve.circl.lu/cve/',
@@ -48,6 +49,7 @@ $config = array(
 			'password'          => '',
             'bodyonlyencrypted' => false,
             'sign'              => true,
+            'obscure_subject'   => false,
 		),
 	'SMIME'            =>
 		array(
@@ -110,7 +112,6 @@ $config = array(
 	'ApacheShibbAuth'  =>                      // Configuration for shibboleth authentication
 		array(
 			'apacheEnv'         => 'REMOTE_USER',        // If proxy variable = HTTP_REMOTE_USER
-			'ssoAuth'           => 'AUTH_TYPE',
 			'MailTag'           => 'EMAIL_TAG',
 			'OrgTag'            => 'FEDERATION_TAG',
 			'GroupTag'          => 'GROUP_TAG',
@@ -120,7 +121,6 @@ $config = array(
 				'group_two'   => 2,
 				'group_one'   => 1,
 			),
-			'DefaultRoleId'     => 3,
 			'DefaultOrg'        => 'DEFAULT_ORG',
 		),
 	*/

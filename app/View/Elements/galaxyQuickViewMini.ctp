@@ -45,7 +45,7 @@
                     } else if($cluster_field['key'] == 'country') {
                         $value = array();
                         foreach ($cluster_field['value'] as $k => $v) {
-                            $value[] = '<span class="famfamfam-flag-' . strtolower(h($v)) . '" ></span>&nbsp;' . h($v);
+                            $value[] = $this->Icon->countryFlag($v) . '&nbsp;' . h($v);
                         }
                         $value_contents = nl2br(implode("\n", $value));
                     } else {
@@ -64,8 +64,9 @@
             echo sprintf(
                 '<div class="large-left-margin">%s %s %s %s</div>',
                 sprintf(
-                    '<span class="bold blue expandable useCursorPointer" data-toggle="popover" data-content="%s">%s</span>',
+                    '<span class="bold blue expandable useCursorPointer" data-content="%s" data-clusterid="%s">%s</span>',
                     h($popover_data),
+                    h($cluster['id']),
                     sprintf(
                         '<span><i class="fas fa-%s"></i> %s</span>',
                         $cluster['local'] ? 'user' : 'globe-americas',
@@ -122,7 +123,7 @@
         }
         if (
             (!isset($local_tag_off) || !$local_tag_off) &&
-            ($isSiteAdmin || ($isAclTagger && Configure::read('MISP.host_org_id') == $me['org_id']))
+            ($isSiteAdmin || ($mayModify && $isAclTagger) || ($isAclTagger && Configure::read('MISP.host_org_id') == $me['org_id']))
         ) {
             echo sprintf(
                 '<button class="%s" data-target-type="%s" data-target-id="%s" data-local="true" role="button" tabindex="0" aria-label="' . __('Add new local cluster') . '" title="' . __('Add a local tag') . '" style="%s">%s</button>',
@@ -138,13 +139,13 @@
 
 <script type="text/javascript">
 $(document).ready(function () {
-    $('.expandable').click(function() {
-        $(this).parent().children('div').toggle();
-        if ($(this).children('span').html() == '+') {
-            $(this).children('span').html('-');
-        } else {
-            $(this).children('span').html('+');
-        }
+    $('<?= isset($rowId) ? '#'.$rowId : '' ?> .expandable')
+    .on('click', function() {
+        loadClusterRelations($(this).data('clusterid'));
+    })
+    .popover({
+        html: true,
+        trigger: 'hover'
     });
 });
 </script>

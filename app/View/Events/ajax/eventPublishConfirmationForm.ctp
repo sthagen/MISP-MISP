@@ -1,6 +1,6 @@
 <div class="confirmation">
     <?php
-    echo $this->Form->create('Event', array('style' => 'margin:0px;', 'id' => 'PromptForm', 'url' => '/events/' . $type . '/' . $id));
+    echo $this->Form->create('Event', array('style' => 'margin:0px;', 'id' => 'PromptForm', 'url' => $baseurl . '/events/' . $type . '/' . $id));
     $extraTitle = "";
     if ($type == 'publish') $extraTitle = ' (no email)';
     $message = __('Publish Event%s', $extraTitle);
@@ -16,6 +16,8 @@
                 echo '<p>' . __('Are you sure this event is complete and everyone should be informed?') . '</p>';
             } else if ($type === 'unpublish') {
                 echo '<p>' . __('Are you sure you wish to unpublish the event?') . '</p>';
+            } else if ($type === 'publishSightings') {
+                echo '<p>' . __('Are you sure you wish publish and synchronise all sightings attached to this event?') . '</p>';
             } else {
                 echo '<p>' . __('Publish but do NOT send alert email? Only for minor changes!') . '</p>';
             }

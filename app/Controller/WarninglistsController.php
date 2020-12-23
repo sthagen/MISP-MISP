@@ -1,6 +1,9 @@
 <?php
 App::uses('AppController', 'Controller');
 
+/**
+ * @property Warninglist $Warninglist
+ */
 class WarninglistsController extends AppController
 {
     public $components = array('Session', 'RequestHandler');
@@ -18,7 +21,17 @@ class WarninglistsController extends AppController
 
     public function index()
     {
+        $filters = $this->IndexFilter->harvestParameters(['value']);
         $this->paginate['recursive'] = -1;
+        if (!empty($filters['value'])) {
+            $this->paginate['conditions'] = [
+                'OR' => [
+                    'LOWER(Warninglist.name) LIKE' => '%' . strtolower($filters['value']) . '%',
+                    'LOWER(Warninglist.description) LIKE' => '%' . strtolower($filters['value']) . '%',
+                    'LOWER(Warninglist.type)' => strtolower($filters['value']),
+                    ]
+                ];
+        }
         $warninglists = $this->paginate();
         foreach ($warninglists as &$warninglist) {
             $warninglist['Warninglist']['valid_attributes'] = array();
@@ -104,9 +117,9 @@ class WarninglistsController extends AppController
             $message = __('Could not update any of the warning lists');
         } else {
             $flashType = 'success';
-            $message = __('Successfully updated ' . $successes . ' warninglists.');
+            $message = __('Successfully updated %s warninglists.', $successes);
             if ($fails != 0) {
-                $message . __(' However, could not update ') . $fails . ' warning list.'; // TODO: non-SVO languages need to be considered
+                $message .= __(' However, could not update %s warninglists.', $fails); // TODO: non-SVO languages need to be considered
             }
         }
         if ($this->_isRest()) {
@@ -186,7 +199,6 @@ class WarninglistsController extends AppController
             $this->Warninglist->regenerateWarninglistCaches($warningList['Warninglist']['id']);
         }
         if ($success) {
-            $this->Warninglist->regenerateWarninglistCaches($id);
             return new CakeResponse(array('body'=> json_encode(array('saved' => true, 'success' => $success . __(' warninglist(s) ') . $message)), 'status' => 200, 'type' => 'json')); // TODO: non-SVO lang considerations
         } else {
             return new CakeResponse(array('body'=> json_encode(array('saved' => false, 'errors' => __('Warninglist(s) could not be toggled.'))), 'status' => 200, 'type' => 'json'));
@@ -267,7 +279,6 @@ class WarninglistsController extends AppController
     public function checkValue()
     {
         if ($this->request->is('post')) {
-            $warninglists = $this->Warninglist->getWarninglists(array());
             if (empty($this->request->data)) {
                 throw new NotFoundException(__('No valid data received.'));
             }
@@ -278,13 +289,14 @@ class WarninglistsController extends AppController
             if (array_key_exists('[]', $data)) {
                 $data = $data['[]'];
             }
+
             $hits = array();
+            $warninglists = $this->Warninglist->getEnabled();
             foreach ($data as $dataPoint) {
                 foreach ($warninglists as $warninglist) {
-                    $listValues = $this->Warninglist->getWarninglistEntries($warninglist['Warninglist']['id']);
-                    $listValues = array_combine($listValues, $listValues);
-                    $result = $this->Warninglist->quickCheckValue($listValues, $dataPoint, $warninglist['Warninglist']['type']);
-                    if ($result) {
+                    $values = $this->Warninglist->getFilteredEntries($warninglist);
+                    $result = $this->Warninglist->quickCheckValue($values, $dataPoint, $warninglist['Warninglist']['type']);
+                    if ($result !== false) {
                         $hits[$dataPoint][] = array('id' => $warninglist['Warninglist']['id'], 'name' => $warninglist['Warninglist']['name']);
                     }
                 }

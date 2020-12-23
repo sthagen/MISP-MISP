@@ -1,10 +1,20 @@
 <?php
 $i = 0;
 $linkColour = ($scope == 'Attribute') ? 'red' : 'white';
+// remove duplicates
+$relatedEvents = array();
+foreach ($event['Related' . $scope][$object['id']] as $k => $relatedAttribute) {
+    if (isset($relatedEvents[$relatedAttribute['id']])) {
+        unset($event['Related' . $scope][$object['id']][$k]);
+    } else {
+        $relatedEvents[$relatedAttribute['id']] = true;
+    }
+}
+$event['Related' . $scope][$object['id']] = array_values($event['Related' . $scope][$object['id']]);
 $count = count($event['Related' . $scope][$object['id']]);
 foreach ($event['Related' . $scope][$object['id']] as $relatedAttribute) {
   if ($i == 4 && $count > 5) {
-    $expandButton = __('Show ') . ($count - 4) . __(' more...');
+    $expandButton = __('Show %s more...', $count - 4);
     echo sprintf(
       '<li class="no-side-padding correlation-expand-button useCursorPointer linkButton %s">%s</li>',
       $linkColour,
@@ -14,12 +24,12 @@ foreach ($event['Related' . $scope][$object['id']] as $relatedAttribute) {
   $relatedData = array(
     'Orgc' => !empty($orgTable[$relatedAttribute['org_id']]) ? $orgTable[$relatedAttribute['org_id']] : 'N/A',
     'Date' => isset($relatedAttribute['date']) ? $relatedAttribute['date'] : 'N/A',
-    'Info' => $relatedAttribute['info'],
+    'Event' => $relatedAttribute['info'],
     'Correlating Value' => $relatedAttribute['value']
   );
   $popover = '';
   foreach ($relatedData as $k => $v) {
-    $popover .= '<span class=\'bold black\'>' . h($k) . '</span>: <span class="blue">' . h($v) . '</span><br />';
+    $popover .= '<span class="bold black">' . h($k) . '</span>: <span class="blue">' . h($v) . '</span><br>';
   }
   $link = $this->Html->link(
     $relatedAttribute['id'],
@@ -43,4 +53,3 @@ if ($i > 5) {
     __('Collapse…')
   );
 }
-?>

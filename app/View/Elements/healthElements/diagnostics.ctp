@@ -11,8 +11,8 @@
     <div style="background-color:#f7f7f9;width:100%;">
         <span><?php echo __('Currently installed version…');?>
             <?php
-
-                switch ($version['upToDate']) {
+                $upToDate = isset($version['upToDate']) ? $version['upToDate'] : null;
+                switch ($upToDate) {
                     case 'newer':
                         $fontColour = 'orange';
                         $versionText = __('Upcoming development version');
@@ -27,34 +27,27 @@
                         break;
                     default:
                         $fontColour = 'red';
-                        $versionText = __('Could not retrieve version from github');
+                        $versionText = __('Could not retrieve version from GitHub');
                 }
             ?>
             <span style="color:<?php echo $fontColour; ?>;">
-                <?php
-                    echo $version['current'] . ' (' . h($commit) . ')';
+                <?= (isset($version['current']) ? $version['current'] : __('Unknown')) . ' (' . h($commit) . ')';
                 ?>
                 <?php if ($commit === ''): ?>
-                    <br />
+                    <br>
                     <span class="red bold apply_css_arrow">
-                        <?php echo __('Unable to fetch current commit id, check apache user read privilege.'); ?>
+                        <?php echo __('Unable to fetch current commit ID, check apache user read privilege.'); ?>
                     </span>
                 <?php endif; ?>
             </span>
         </span><br />
         <span><?php echo __('Latest available version…');?>
             <span style="color:<?php echo $fontColour; ?>;">
-                <?php
-                    echo $version['newest'] . ' (' . $latestCommit . ')';
-                ?>
+                <?= (isset($version['newest']) ? $version['newest'] : __('Unknown')) . ' (' . (isset($latestCommit) ? $latestCommit : __('Unknown')) . ')' ?>
             </span>
         </span><br />
         <span><?php echo __('Status…');?>
-            <span style="color:<?php echo $fontColour; ?>;">
-                <?php
-                    echo $versionText;
-                ?>
-            </span>
+            <span style="color:<?php echo $fontColour; ?>;"><?= $versionText ?></span>
         </span><br />
         <span><?php echo __('Current branch…');?>
             <?php
@@ -65,8 +58,8 @@
             </span>
         </span><br />
         <pre class="hidden green bold" id="gitResult"></pre>
-        <button title="<?php echo __('Pull the latest MISP version from github');?>" class="btn btn-inverse" style="padding-top:1px;padding-bottom:1px;" onClick = "updateMISP();"><?php echo __('Update MISP');?></button>
-        <a title="<?php echo __('Click the following button to go to the update progress page. This page lists all updates that are currently queued and executed.'); ?>" class="btn btn-inverse" style="padding-top:1px;padding-bottom:1px;" href="<?php echo $baseurl; ?>/servers/updateProgress/"><?php echo __('Update Progress');?></a>
+        <button title="<?php echo __('Pull the latest MISP version from GitHub');?>" class="btn btn-inverse" style="padding-top:1px;padding-bottom:1px;" onClick = "updateMISP();"><?php echo __('Update MISP');?></button>
+        <a title="<?php echo __('Click the following button to go to the update progress page. This page lists all updates that are currently queued and executed.'); ?>" style="margin-left: 5px;" href="<?php echo $baseurl; ?>/servers/updateProgress/"><i class="fas fa-tasks"></i> <?php echo __('View Update Progress');?></a>
     </div>
     <h3><?php echo __('Submodules version');?>
         <it id="refreshSubmoduleStatus" class="fas fa-sync useCursorPointer" style="font-size: small; margin-left: 5px;" title="<?php echo __('Refresh submodules version.'); ?>"></it>
@@ -159,7 +152,7 @@
     <p><span class="bold"><?php echo __('PHP ini path');?></span>:… <span class="green"><?php echo h($php_ini); ?></span><br />
     <span class="bold"><?php echo __('PHP Version');?> (><?php echo $phprec; ?> <?php echo __('recommended');?>): </span><span class="<?php echo $phpversions['web']['phpcolour']; ?>"><?php echo h($phpversions['web']['phpversion']) . ' (' . $phpversions['web']['phptext'] . ')';?></span><br />
     <span class="bold"><?php echo __('PHP CLI Version');?> (><?php echo $phprec; ?> <?php echo __('recommended');?>): </span><span class="<?php echo $phpversions['cli']['phpcolour']; ?>"><?php echo h($phpversions['cli']['phpversion']) . ' (' . $phpversions['cli']['phptext'] . ')';?></span></p>
-    <p class="red bold"><?php echo __('Please note that the we will be dropping support for Python 2.7 and PHP 7.1 as of 2020-01-01 and are henceforth considered deprecated (but supported until the end of 2019). Both of these versions will by then reached End of Life and will become a liability. Furthermore, by dropping support for these outdated versions of the languages, we\'ll be able to phase out support for legacy code that exists solely to support them. Make sure that you plan ahead accordingly. More info: ');?><a href="https://secure.php.net/supported-versions.php">PHP</a>, <a href="https://www.python.org/dev/peps/pep-0373">Python</a>.</p>
+    <p class="red bold"><?php echo __('Please note that the support for Python versions below 3.6 and below PHP 7.2 has been dropped as of 2020-01-01 and are henceforth considered unsupported. More info: ');?><a href="https://secure.php.net/supported-versions.php">PHP</a>, <a href="https://www.python.org/dev/peps/pep-0373">Python</a>.</p>
     <p><?php echo __('The following settings might have a negative impact on certain functionalities of MISP with their current and recommended minimum settings. You can adjust these in your php.ini. Keep in mind that the recommendations are not requirements, just recommendations. Depending on usage you might want to go beyond the recommended values.');?></p>
     <?php
         foreach ($phpSettings as $settingName => &$phpSetting):
@@ -171,35 +164,49 @@
     <?php
         endforeach;
     ?>
-    <h4><?php echo __('PHP Extensions');?></h4>
-        <?php
-            foreach (array('web', 'cli') as $context):
-        ?>
-            <div style="background-color:#f7f7f9;width:400px;">
-                <b><?php echo ucfirst(h($context));?></b><br />
-                <?php
-                    if (isset($extensions[$context]['extensions'])):
-                        foreach ($extensions[$context]['extensions'] as $extension => $status):
-                ?>
-                            <?php echo h($extension); ?>:… <span style="color:<?php echo $status ? 'green' : 'red';?>;font-weight:bold;"><?php echo $status ? __('OK') : __('Not loaded'); ?></span><br />
-                <?php
-                        endforeach;
-                    else:
-                ?>
-                        <span class="red"><?php echo __('Issues reading PHP settings. This could be due to the test script not being readable.');?></span>
-                <?php
-                    endif;
-                ?>
-            </div><br />
-        <?php
-            endforeach;
-        ?>
+    <h4><?= __('PHP Extensions') ?></h4>
+    <table class="table table-condensed table-bordered" style="width: 40vw">
+        <thead>
+            <tr>
+                <th><?= __('Extension') ?></th>
+                <th><?= __('Required') ?></th>
+                <th><?= __('Why to install') ?></th>
+                <th><?= __('Web') ?></th>
+                <th><?= __('CLI') ?></th>
+            </tr>
+        </thead>
+        <tbody>
+        <?php foreach ($extensions['extensions'] as $extension => $info): ?>
+        <tr>
+            <td class="bold"><?= h($extension) ?></td>
+            <td><?= $info['required'] ? '<i class="black fa fa-check" role="img" aria-label="' .  __('Yes') . '"></i>' : '<i class="black fa fa-times" role="img" aria-label="' .  __('No') . '"></i>' ?></td>
+            <td><?= $info['info'] ?></td>
+            <?php foreach (['web', 'cli'] as $type): ?>
+            <td><?php
+                $version = $info["{$type}_version"];
+                $outdated = $info["{$type}_version_outdated"];
+                if ($version && !$outdated) {
+                    echo '<i class="green fa fa-check" role="img" aria-label="' .  __('Yes') . '"></i> (' . h($version) .')';
+                } else {
+                    echo '<i class="red fa fa-times" role="img" aria-label="' .  __('No') . '"></i>';
+                    if ($outdated) {
+                        echo '<br>' . __("Version %s installed, but required at least %s", h($version), h($info['required_version']));
+                    }
+                }
+            ?></td>
+            <?php endforeach; ?>
+        </tr>
+        <?php endforeach; ?>
+        </tbody>
+    </table>
+
     <?php
         echo '<div style="width:400px;">';
         echo $this->element('/genericElements/IndexTable/index_table', array(
             'data' => array(
                 'data' => $dbDiagnostics,
                 'skip_pagination' => 1,
+                'max_height' => '400px',
                 'fields' => array(
                     array(
                         'name' => __('Table'),
@@ -225,6 +232,23 @@
         ));
         echo '</div>';
     ?>
+        <h4><?php echo __('Schema status');?></h4>
+        <div id="schemaStatusDiv" style="width: 70vw; padding-left: 10px;">
+            <?php echo $this->element('/healthElements/db_schema_diagnostic', array(
+                'checkedTableColumn' => $dbSchemaDiagnostics['checked_table_column'],
+                'dbSchemaDiagnostics' => $dbSchemaDiagnostics['diagnostic'],
+                'expectedDbVersion' => $dbSchemaDiagnostics['expected_db_version'],
+                'actualDbVersion' => $dbSchemaDiagnostics['actual_db_version'],
+                'error' => $dbSchemaDiagnostics['error'],
+                'remainingLockTime' => $dbSchemaDiagnostics['remaining_lock_time'],
+                'updateFailNumberReached' => $dbSchemaDiagnostics['update_fail_number_reached'],
+                'updateLocked' => $dbSchemaDiagnostics['update_locked'],
+                'dataSource' => $dbSchemaDiagnostics['dataSource'],
+                'columnPerTable' => $dbSchemaDiagnostics['columnPerTable'],
+                'dbIndexDiagnostics' => $dbSchemaDiagnostics['diagnostic_index'],
+                'indexes' => $dbSchemaDiagnostics['indexes'],
+            )); ?>
+        </div>
     <h3><?= __("Redis info") ?></h3>
     <div style="background-color:#f7f7f9;width:400px;">
         <b><?= __('PHP extension version') ?>:</b> <?= $redisInfo['extensionVersion'] ?: ('<span class="red bold">' . __('Not installed.') . '</span>') ?><br>
@@ -256,6 +280,16 @@
                 endif;
             ?>
         </div>
+    <h3><?= __('Attachment scan module') ?></h3>
+    <div style="background-color:#f7f7f9;width:400px;">
+        <?php if ($attachmentScan['status']): ?>
+        <b>Status:</b> <span class="green bold"><?= __('OK') ?></span><br>
+        <b>Software</b>: <?= implode(", ", $attachmentScan['software']) ?>
+        <?php else: ?>
+        <b>Status:</b> <span class="red bold"><?= __('Not available.') ?></span><br>
+        <b>Reason:</b> <?= $attachmentScan['error'] ?>
+        <?php endif; ?>
+    </div>
     <h3><?php echo __('STIX and Cybox libraries');?></h3>
     <p><?php echo __('Mitre\'s STIX and Cybox python libraries have to be installed in order for MISP\'s STIX export to work. Make sure that you install them (as described in the MISP installation instructions) if you receive an error below.');?><br />
     <?php echo __('If you run into any issues here, make sure that both STIX and CyBox are installed as described in the INSTALL.txt file. The required versions are');?>:<br />
@@ -323,12 +357,12 @@
     <p><?php echo __('This tool tests whether your GnuPG is set up correctly or not.');?></p>
     <div style="background-color:#f7f7f9;width:400px;">
         <?php
-            $colour = 'green';
-            $message = $gpgErrors[$gpgStatus];
-            if ($gpgStatus > 0) {
-                $colour = 'red';
+            $message = $gpgErrors[$gpgStatus['status']];
+            $color = $gpgStatus['status'] === 0 ? 'green' : 'red';
+            echo __('GnuPG installation and settings') . '…<span style="color:' . $color . '">' . $message . '</span><br>';
+            if ($gpgStatus['version']) {
+                echo __('GnuPG version: %s', $gpgStatus['version'] ?: __('N/A'));
             }
-            echo __('GnuPG installation and settings') . '…<span style="color:' . $colour . ';">' . $message . '</span>';
         ?>
     </div>
     <h3><?php echo __('ZeroMQ');?></h3>
@@ -367,14 +401,14 @@
     ?>
         <div style="background-color:#f7f7f9;width:400px;">
             <?php
-                $colour = 'green';
+                $colour = 'red';
                 if (isset($moduleErrors[$moduleStatus[$type]])) {
                     $message = $moduleErrors[$moduleStatus[$type]];
                 } else {
                     $message = h($moduleStatus[$type]);
                 }
-                if ($moduleStatus[$type] > 0) {
-                    $colour = 'red';
+                if ($moduleStatus[$type] === 0) {
+                    $colour = 'green';
                 }
                 echo $type . __(' module system') . '…<span style="color:' . $colour . ';">' . $message . '</span>';
             ?>
@@ -400,12 +434,30 @@
     <?php
         endif;
     ?>
+    <h3><?php echo __('Upgrade authkeys keys to the advanced keys format'); ?><a id="advanced_authkey_update">&nbsp</a></h3>
+    <p>
+        <?php
+            echo __('MISP can store the user API keys either in the clear directly attached to the users, or as of recently, it can generate a list of hashed keys for different purposes. If the latter feature is enabled, it might be useful to move all existing keys over to the new format so that users do not lose access to the system. In order to do so, run the following functionality.');
+        ?>
+        <?php echo $this->Form->postLink('<span class="btn btn-inverse" style="padding-top:1px;padding-bottom:1px;">' . __('Update Authkeys to advanced Authkeys') . '</span>', $baseurl . '/users/updateToAdvancedAuthKeys', array('escape' => false));?>
+    </p>
     <h3><?php echo __('Clean model cache');?></h3>
     <p><?php echo __('If you ever run into issues with missing database fields / tables, please run the following script to clean the model cache.');?></p>
     <?php echo $this->Form->postLink('<span class="btn btn-inverse" style="padding-top:1px;padding-bottom:1px;">' . __('Clean cache') . '</span>', $baseurl . '/events/cleanModelCaches', array('escape' => false));?>
-    <h3><?php echo __('Overwritten objects');?></h3>
-    <p><?php echo __('Prior to 2.4.89, due to a bug a situation could occur where objects got overwritten on a sync pull. This tool allows you to inspect whether you are affected and if yes, remedy the issue.');?></p>
-    <a href="<?php echo $baseurl; ?>/objects/orphanedObjectDiagnostics"><span class="btn btn-inverse"><?php echo __('Reconstruct overwritten objects');?></span></a>
+    <?php
+        echo sprintf(
+            '<h3>%s</h3><p>%s</p><div id="deprecationResults"></div>%s',
+            __('Check for deprecated function usage'),
+            __('In an effort to identify the usage of deprecated functionalities, MISP has started aggregating the count of access requests to these endpoints. Check the frequency of their use below along with the users to potentially warn about better ways of achieving their goals.'),
+            sprintf(
+                '<span class="btn btn-inverse" role="button" tabindex="0" aria-label="%s" title="%s" onClick="%s">%s</span>',
+                __('View deprecated endpoint usage'),
+                __('View deprecated endpoint usage'),
+                'queryDeprecatedEndpointUsage();',
+                __('View deprecated endpoint usage')
+            )
+        );
+    ?>
     <h3><?php echo __('Orphaned attributes');?></h3>
     <p><?php echo __('In some rare cases attributes can remain in the database after an event is deleted becoming orphaned attributes. This means that they do not belong to any event, which can cause issues with the correlation engine (known cases include event deletion directly in the database without cleaning up the attributes and situations involving a race condition with an event deletion happening before all attributes are synchronised over).');?></p>
     <div style="background-color:#f7f7f9;width:400px;">
@@ -426,7 +478,9 @@
         <?php echo __('Non existing attachments referenced in Database');?>…<span id="orphanedFileCount"><span style="color:orange;"><?php echo __('Run the test below');?></span></span>
     </div><br>
     <span class="btn btn-inverse" role="button" tabindex="0" aria-label="<?php echo __('Check bad link on attachments');?>" title="<?php echo __('Check bad link on attachments');?>" style="padding-top:1px;padding-bottom:1px;" onClick="checkAttachments();"><?php echo __('Check bad link on attachments');?></span>
-
+    <h3><?php echo __('Recover deleted events'); ?></h3>
+    <p><?php echo __('Due to a bug introduced after 2.4.129, users could occasionally accidentally and unknowingly trigger event deletions. Use the tool below to display any events deleted during the timeframe when the bug was active and optionally recover individual events if you believe they were removed in error.')?></p>
+    <span class="btn btn-inverse" role="button" tabindex="0" aria-label="<?php echo __('Recover deleted events');?>" title="<?php echo __('Recover deleted events');?>" style="padding-top:1px;padding-bottom:1px;" onClick="location.href = '<?php echo $baseurl; ?>/events/restoreDeletedEvents';"><?php echo __('Recover deleted events');?></span>
 </div>
 
 <script>
@@ -450,7 +504,7 @@
                 $clone.find('strong').text('Synchronization result:');
                 if (job_sent) {
                     $clone.find('#submoduleGitResult')
-                        .html('> Synchronizing DB with <a href="/jobs/index/" target="_blank">workers</a>...');
+                        .html('> Synchronizing DB with <a href="<?php echo $baseurl . '/jobs/index/'; ?>" target="_blank">workers</a>...');
                 } else {
                     $clone.find('#submoduleGitResult')
                         .text(sync_result);
