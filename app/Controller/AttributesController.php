@@ -1124,7 +1124,6 @@ class AttributesController extends AppController
                 throw new MethodNotAllowedException();
             }
             if ($this->Attribute->restore($id, $this->Auth->user())) {
-                $this->Attribute->__alterAttributeCount($this->data['Attribute']['event_id']);
                 $this->redirect(array('action' => 'view', $id));
             } else {
                 throw new NotFoundException(__('Could not restore the attribute'));
@@ -2714,15 +2713,15 @@ class AttributesController extends AppController
                 } else {
                     $attribute = $attributes[0];
                 }
-                if (!$this->__canModifyTag($attribute, $local)) {
-                    $fails++;
-                    continue;
-                }
                 $eventId = $attribute['Attribute']['event_id'];
                 $event = $this->Attribute->Event->find('first', array(
                     'conditions' => array('Event.id' => $eventId),
                     'recursive' => -1
                 ));
+                if (!$this->__canModifyTag($event, $local)) {
+                    $fails++;
+                    continue;
+                }
                 if (!$this->_isRest()) {
                     $this->Attribute->Event->insertLock($this->Auth->user(), $eventId);
                 }
@@ -2933,7 +2932,7 @@ class AttributesController extends AppController
                 }
                 $log = ClassRegistry::init('Log');
                 $log->createLogEntry($this->Auth->user(), 'tag', 'Attribute', $id, 'Removed tag (' . $tag_id . ') "' . $tag['Tag']['name'] . '" from attribute (' . $id . ')', 'Attribute (' . $id . ') untagged of Tag (' . $tag_id . ')');
-                return new CakeResponse(array('body'=> json_encode(array('saved' => true, 'success' => 'Tag removed.', 'check_publish' => empty($attributeTag['AttributeTag']['local']))), 'status' => 200));
+                return new CakeResponse(array('body'=> json_encode(array('saved' => true, 'success' => 'Tag removed.', 'check_publish' => empty($attributeTag['AttributeTag']['local']))), 'status' => 200, 'type'=> 'json'));
             } else {
                 return new CakeResponse(array('body'=> json_encode(array('saved' => false, 'errors' => 'Tag could not be removed.')), 'status' => 200, 'type' => 'json'));
             }
