@@ -14,7 +14,9 @@ class Server extends AppModel
 
     public $name = 'Server';
 
-    public $actsAs = array('SysLogLogable.SysLogLogable' => array(
+    public $actsAs = array(
+        'AuditLog',
+        'SysLogLogable.SysLogLogable' => array(
             'userModel' => 'User',
             'userKey' => 'user_id',
             'change' => 'full'
@@ -51,7 +53,7 @@ class Server extends AppModel
     public $validate = array(
         'url' => array(
             'url' => array(
-                'rule' => array('url'),
+                'rule' => array('validateURL'),
                 'message' => 'Please enter a valid base-url.'
             )
         ),
@@ -163,7 +165,10 @@ class Server extends AppModel
                 'data' => array(
                     'PullAll' => 'MISP/app/Console/cake Server pullAll [user_id] [full|update]',
                     'Pull' => 'MISP/app/Console/cake Server pull [user_id] [server_id] [full|update]',
+                    'PushAll' => 'MISP/app/Console/cake Server pushAll [user_id]',
                     'Push' => 'MISP/app/Console/cake Server push [user_id] [server_id]',
+                    'Cache server' => 'MISP/app/Console/cake server cacheServer [user_id] [server_id]',
+                    'Cache all servers' => 'MISP/app/Console/cake server cacheServerAll [user_id]',
                     'Cache feeds for quick lookups' => 'MISP/app/Console/cake Server cacheFeed [user_id] [feed_id|all|csv|text|misp]',
                     'Fetch feeds as local data' => 'MISP/app/Console/cake Server fetchFeed [user_id] [feed_id|all|csv|text|misp]',
                     'Run enrichment' => 'MISP/app/Console/cake Event enrichment [user_id] [event_id] [json_encoded_module_list]',
@@ -469,6 +474,7 @@ class Server extends AppModel
     public function pull($user, $id = null, $technique=false, $server, $jobId = false, $force = false)
     {
         if ($jobId) {
+            Configure::write('CurrentUserId', $user['id']);
             $job = ClassRegistry::init('Job');
             $job->read(null, $jobId);
             $email = "Scheduled job";
@@ -1677,6 +1683,13 @@ class Server extends AppModel
         return $proto;
     }
 
+    public function validateURL($check)
+    {
+        $check = array_values($check);
+        $check = $check[0];
+        return $this->testURL($check);
+    }
+
     public function testBaseURL($value)
     {
         // only run this check via the GUI, via the CLI it won't work
@@ -2126,6 +2139,9 @@ class Server extends AppModel
         }
         if (!empty($setting)) {
             $setting['name'] = $setting_name;
+        }
+        if (!empty($setting['optionsSource'])) {
+            $setting['options'] = $setting['optionsSource']();
         }
         return $setting;
     }
@@ -2628,24 +2644,32 @@ class Server extends AppModel
 
     public function dbSpaceUsage()
     {
+        $inMb = function ($value) {
+            return round($value / 1024 / 1024, 2) . " MB";
+        };
+
+        $result = [];
         $dataSource = $this->getDataSource()->config['datasource'];
-        if ($dataSource == 'Database/Mysql' || $dataSource == 'Database/MysqlObserver') {
+        if ($dataSource === 'Database/Mysql' || $dataSource === 'Database/MysqlObserver') {
             $sql = sprintf(
-                'select TABLE_NAME, sum((DATA_LENGTH+INDEX_LENGTH)/1024/1024) AS used, sum(DATA_FREE)/1024/1024 AS reclaimable from information_schema.tables where table_schema = %s group by TABLE_NAME;',
+                'select TABLE_NAME, DATA_LENGTH, INDEX_LENGTH, DATA_FREE from information_schema.tables where table_schema = %s group by TABLE_NAME, DATA_LENGTH, INDEX_LENGTH, DATA_FREE;',
                 "'" . $this->getDataSource()->config['database'] . "'"
             );
             $sqlResult = $this->query($sql);
-            $result = array();
+
             foreach ($sqlResult as $temp) {
-                foreach ($temp[0] as $k => $v) {
-                    $temp[0][$k] = round($v, 2) . 'MB';
-                }
-                $temp[0]['table'] = $temp['tables']['TABLE_NAME'];
-                $result[] = $temp[0];
+                $result[$temp['tables']['TABLE_NAME']] = [
+                    'table' => $temp['tables']['TABLE_NAME'],
+                    'used' => $inMb($temp['tables']['DATA_LENGTH'] + $temp['tables']['INDEX_LENGTH']),
+                    'reclaimable' => $inMb($temp['tables']['DATA_FREE']),
+                    'data_in_bytes' => (int) $temp['tables']['DATA_LENGTH'],
+                    'index_in_bytes' => (int) $temp['tables']['INDEX_LENGTH'],
+                    'reclaimable_in_bytes' => (int) $temp['tables']['DATA_FREE'],
+                ];
             }
-            return $result;
+
         }
-        else if ($dataSource == 'Database/Postgres') {
+        else if ($dataSource === 'Database/Postgres') {
             $sql = sprintf(
                 'select TABLE_NAME as table, pg_total_relation_size(%s||%s||TABLE_NAME) as used from information_schema.tables where table_schema = %s group by TABLE_NAME;',
                 "'" . $this->getDataSource()->config['database'] . "'",
@@ -2653,19 +2677,18 @@ class Server extends AppModel
                 "'" . $this->getDataSource()->config['database'] . "'"
             );
             $sqlResult = $this->query($sql);
-            $result = array();
             foreach ($sqlResult as $temp) {
                 foreach ($temp[0] as $k => $v) {
                     if ($k == "table") {
                         continue;
                     }
-                    $temp[0][$k] = round($v / 1024 / 1024, 2) . 'MB';
+                    $temp[0][$k] = $inMb($v);
                 }
-                $temp[0]['reclaimable'] = '0MB';
+                $temp[0]['reclaimable'] = '0 MB';
                 $result[] = $temp[0];
             }
-            return $result;
         }
+        return $result;
     }
 
     public function redisInfo()
@@ -3553,19 +3576,13 @@ class Server extends AppModel
     {
         $this->ResqueStatus = new ResqueStatus\ResqueStatus(Resque::redis());
         $workers = $this->ResqueStatus->getWorkers();
-        if (function_exists('posix_getpwuid')) {
-            $currentUser = posix_getpwuid(posix_geteuid());
-            $currentUser = $currentUser['name'];
-        } else {
-            $currentUser = trim(shell_exec('whoami'));
-        }
         $killed = array();
         foreach ($workers as $pid => $worker) {
             if (!is_numeric($pid)) {
                 throw new MethodNotAllowedException('Non numeric PID found!');
             }
-            $pidTest = substr_count(trim(shell_exec('ps -p ' . $pid)), PHP_EOL) > 0 ? true : false;
-            if ($worker['user'] == $currentUser && !$pidTest) {
+            $pidTest = file_exists('/proc/' . addslashes($pid));
+            if (!$pidTest) {
                 $this->ResqueStatus->removeWorker($pid);
                 $this->__logRemoveWorker($user, $pid, $worker['queue'], true);
                 if (empty($killed[$worker['queue']])) {
@@ -4173,12 +4190,12 @@ class Server extends AppModel
         $HttpSocket = $this->setupHttpSocket($server, $HttpSocket);
         while ($continue) {
             $i++;
-            $pipe = $redis->multi(Redis::PIPELINE);
             $chunk_size = 50000;
             $data = $this->__getCachedAttributes($server, $HttpSocket, $chunk_size, $i);
             if (empty(trim($data))) {
                 $continue = false;
             } else {
+                $pipe = $redis->multi(Redis::PIPELINE);
                 $data = explode(PHP_EOL, trim($data));
                 foreach ($data as $entry) {
                     list($value, $uuid) = explode(',', $entry);
@@ -4192,11 +4209,11 @@ class Server extends AppModel
                         $redis->sAdd('misp:server_cache:event_uuid_lookup:' . $value, $server['Server']['id'] . '/' . $uuid);
                     }
                 }
+                $pipe->exec();
+                if ($jobId) {
+                    $job->saveField('message', 'Server ' . $server['Server']['id'] . ': ' . ((($i -1) * $chunk_size) + count($data)) . ' attributes cached.');
+                }
             }
-            if ($jobId) {
-                $job->saveField('message', 'Server ' . $server['Server']['id'] . ': ' . ((($i -1) * $chunk_size) + count($data)) . ' attributes cached.');
-            }
-            $pipe->exec();
         }
         $redis->set('misp:server_cache_timestamp:' . $server['Server']['id'], time());
         return true;
@@ -4441,7 +4458,7 @@ class Server extends AppModel
                         'OR' => [
                             'Correlation.attribute_id = Attribute.id',
                         ]
-                        
+
                     ]
                 ]
             ],
@@ -4466,19 +4483,28 @@ class Server extends AppModel
 
     public function queryAvailableSyncFilteringRules($server)
     {
+        $syncFilteringRules = [
+            'error' => '',
+            'data' => []
+        ];
         $HttpSocket = $this->setupHttpSocket($server, null);
         $uri = $server['Server']['url'] . '/servers/getAvailableSyncFilteringRules';
         $request = $this->setupSyncRequest($server);
-        $response = $HttpSocket->get($uri, false, $request);
-        if ($response === false) {
-            throw new Exception(__('Connection failed for unknown reason.'));
+        try {
+            $response = $HttpSocket->get($uri, false, $request);
+            if ($response === false) {
+                $syncFilteringRules['error'] = __('Connection failed for unknown reason.');
+                return $syncFilteringRules;
+            }
+        } catch (SocketException $e) {
+            $syncFilteringRules['error'] = __('Connection failed for unknown reason. Error returned: %s', $e->getMessage());
+            return $syncFilteringRules;
         }
 
-        $syncFilteringRules = [];
         if ($response->isOk()) {
-            $syncFilteringRules = $this->jsonDecode($response->body());
+            $syncFilteringRules['data'] = $this->jsonDecode($response->body());
         } else {
-            throw new Exception(__('Reponse was not OK. (HTTP code: %s)', $response->code));
+            $syncFilteringRules['error'] = __('Reponse was not OK. (HTTP code: %s)', $response->code);
         }
         return $syncFilteringRules;
     }
@@ -4911,6 +4937,15 @@ class Server extends AppModel
                     'test' => 'testDisableEmail',
                     'type' => 'boolean',
                 ),
+                'publish_alerts_summary_only' => array(
+                    'level' => 1,
+                    'description' => __('Only send a summary of the publish alert, rather than the full contents of the event.'),
+                    'value' => false,
+                    'errorMessage' => '',
+                    'null' => true,
+                    'test' => 'testBool',
+                    'type' => 'boolean',
+                ),
                 'contact' => array(
                     'level' => 1,
                     'description' => __('The e-mail address that MISP should include as a contact address for the instance\'s support team.'),
@@ -5223,6 +5258,24 @@ class Server extends AppModel
                     'type' => 'boolean',
                     'null' => true
                 ],
+                'log_new_audit' => [
+                    'level' => self::SETTING_RECOMMENDED,
+                    'description' => __('Enable new audit log system.'),
+                    'value' => false,
+                    'errorMessage' => '',
+                    'test' => 'testBool',
+                    'type' => 'boolean',
+                    'null' => true
+                ],
+                'log_new_audit_compress' => [
+                    'level' => self::SETTING_OPTIONAL,
+                    'description' => __('Compress log changes by brotli algorithm. This will reduce log database size.'),
+                    'value' => false,
+                    'errorMessage' => '',
+                    'test' => 'testBool',
+                    'type' => 'boolean',
+                    'null' => true
+                ],
                 'delegation' => array(
                     'level' => 1,
                     'description' => __('This feature allows users to create org only events and ask another organisation to take ownership of the event. This allows organisations to remain anonymous by asking a partner to publish an event for them.'),
@@ -5262,6 +5315,15 @@ class Server extends AppModel
                 'showDiscussionsCountOnIndex' => array(
                     'level' => 1,
                     'description' => __('When enabled, the aggregate number of discussion posts for the event becomes visible to the currently logged in user on the event index UI.'),
+                    'value' => false,
+                    'errorMessage' => '',
+                    'test' => 'testBool',
+                    'type' => 'boolean',
+                    'null' => true
+                ),
+                'showEventReportCountOnIndex' => array(
+                    'level' => 1,
+                    'description' => __('When enabled, the aggregate number of event reports for the event becomes visible to the currently logged in user on the event index UI.'),
                     'value' => false,
                     'errorMessage' => '',
                     'test' => 'testBool',
@@ -5320,6 +5382,33 @@ class Server extends AppModel
                     'errorMessage' => '',
                     'test' => 'testForEmpty',
                     'type' => 'string',
+                    'null' => false,
+                ),
+                'event_alert_republish_ban' => array(
+                    'level' => 1,
+                    'description' => __('Enable this setting to start blocking alert e-mails for events that have already been published since a specified amount of time. This threshold is defined by MISP.event_alert_republish_ban_threshold'),
+                    'value' => false,
+                    'errorMessage' => '',
+                    'test' => 'testBool',
+                    'type' => 'boolean',
+                    'null' => false,
+                ),
+                'event_alert_republish_ban_threshold' => array(
+                    'level' => 1,
+                    'description' => __('If the MISP.event_alert_republish_ban setting is set, this setting will control how long no alerting by email will be done. Expected format: integer, in minutes'),
+                    'value' => 5,
+                    'errorMessage' => '',
+                    'test' => 'testForNumeric',
+                    'type' => 'numeric',
+                    'null' => false,
+                ),
+                'event_alert_republish_ban_refresh_on_retry' => array(
+                    'level' => 1,
+                    'description' => __('If the MISP.event_alert_republish_ban setting is set, this setting will control if a ban time should be reset if emails are tried to be sent during the ban.'),
+                    'value' => false,
+                    'errorMessage' => '',
+                    'test' => 'testBool',
+                    'type' => 'boolean',
                     'null' => false,
                 ),
                 'org_alert_threshold' => array(
@@ -5514,6 +5603,15 @@ class Server extends AppModel
                     'test' => 'testForPositiveInteger',
                     'type' => 'numeric',
                     'null' => true,
+                ],
+                'warning_for_all' => [
+                    'level' => 1,
+                    'description' => __('Enable warning list triggers regardless of the IDS flag value'),
+                    'value' => false,
+                    'errorMessage' => '',
+                    'test' => 'testBool',
+                    'type' => 'boolean',
+                    'null' => true
                 ],
             ),
             'GnuPG' => array(
@@ -6538,6 +6636,14 @@ class Server extends AppModel
                     'test' => 'testBool',
                     'type' => 'boolean'
                 ),
+                'ZeroMQ_warninglist_notifications_enable' =>  array(
+                    'level' => 2,
+                    'description' => __('Enables or disables the publishing of new/modified warninglist to the ZMQ pubsub feed.'),
+                    'value' => false,
+                    'errorMessage' => '',
+                    'test' => 'testBool',
+                    'type' => 'boolean'
+                ),
                 'ElasticSearch_logging_enable' => array(
                     'level' => 2,
                     'description' => __('Enabled logging to an ElasticSearch instance'),
@@ -6937,7 +7043,25 @@ class Server extends AppModel
                     'test' => 'testForEmpty',
                     'type' => 'string',
                     'null' => true
-                )
+                ),
+                'CyCat_enable' => [
+                    'level' => 1,
+                    'description' => __('Enable lookups for additional relations via CyCat.'),
+                    'value' => false,
+                    'errorMessage' => '',
+                    'test' => 'testBool',
+                    'type' => 'boolean',
+                    'null' => true
+                ],
+                'CyCat_url' => [
+                    'level' => 2,
+                    'description' => __('URL to use for CyCat lookups, if enabled.'),
+                    'value' => 'https://api.cycat.org',
+                    'errorMessage' => '',
+                    'test' => 'testForEmpty',
+                    'type' => 'string',
+                    'null' => true
+                ]
             ),
             'debug' => array(
                 'level' => 0,

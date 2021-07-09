@@ -159,7 +159,7 @@ class GalaxyClustersController extends AppController
             $this->render('ajax/index');
         }
     }
-    
+
     /**
      * @param  mixed $id ID or UUID of the cluster
      */
@@ -204,7 +204,7 @@ class GalaxyClustersController extends AppController
             }
         }
     }
-    
+
     /**
      * @param  mixed $galaxyId ID of the galaxy to which the cluster will be added
      */
@@ -323,13 +323,14 @@ class GalaxyClustersController extends AppController
                 }
             }
         }
+        $this->set('galaxy', ['Galaxy' => ['id' => $galaxyId]]);
         $this->set('galaxy_id', $galaxyId);
         $this->set('distributionLevels', $distributionLevels);
         $this->set('initialDistribution', $initialDistribution);
         $this->set('sharingGroups', $sgs);
         $this->set('action', 'add');
     }
-    
+
     /**
      * @param  mixed $id ID or UUID of the cluster
      */
@@ -396,7 +397,7 @@ class GalaxyClustersController extends AppController
             if (empty($cluster['GalaxyCluster']['authors'])) {
                 $cluster['GalaxyCluster']['authors'] = [];
             } else if (is_array($cluster['GalaxyCluster']['authors'])) {
-                // This is as intended, move on 
+                // This is as intended, move on
             }else {
                 $decoded = json_decode($cluster['GalaxyCluster']['authors'], true);
                 if (is_null($decoded)) { // authors might be comma separated
@@ -772,6 +773,15 @@ class GalaxyClustersController extends AppController
         } else {
             throw new MethodNotAllowedException(__('This function can only be reached via POST.'));
         }
+    }
+
+    public function viewCyCatRelations($id)
+    {
+        $cluster = $this->GalaxyCluster->fetchIfAuthorized($this->Auth->user(), $id, 'view', true, false);
+        $CyCatRelations = $this->GalaxyCluster->getCyCatRelations($cluster);
+        $this->set('cluster', $cluster);
+        $this->set('CyCatRelations', $CyCatRelations);
+        $this->render('cluster_cycatrelations');
     }
 
     public function viewGalaxyMatrix($id)

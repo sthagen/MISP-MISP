@@ -914,6 +914,23 @@ function multiSelectToggleFeeds(on, cache) {
     }).fail(xhrFailCallback);
 }
 
+function multiSelectToggleField(scope, action, fieldName, enabled) {
+    var selected = [];
+    $(".select").each(function() {
+        if ($(this).is(":checked")) {
+            var temp = $(this).data("id");
+            if (temp != null) {
+                selected.push(temp);
+            }
+        }
+    });
+    $.get(baseurl + "/" + scope + "/" + action + "/" + fieldName + "/" + enabled, function(data) {
+        $('body').append($('<div id="temp"/>').html(data));
+        $('#temp form #UserUserIds').val(JSON.stringify(selected));
+        $('#temp form')[0].submit();
+    }).fail(xhrFailCallback);
+}
+
 function multiSelectDeleteEventBlocklist(on, cache) {
     var selected = [];
     $(".select").each(function() {
@@ -3659,7 +3676,7 @@ function toggleBoolFilter(url, param) {
     });
     if (res[param] !== undefined) {
         if (param == 'deleted') {
-            res[param] = res[param] == 0 ? 2 : 0;
+            res[param] = res[param] == 0 ? 1 : 0;
         } else {
             res[param] = res[param] == 0 ? 1 : 0;
         }
@@ -5056,17 +5073,25 @@ function saveDashboardState() {
             dashBoardSettings.push(temp);
         }
     });
-    $.ajax({
-        data: {value: dashBoardSettings},
-        success:function (data, textStatus) {
-            showMessage('success', 'Dashboard settings saved.');
-        },
-        error: function (jqXHR, textStatus, errorThrown) {
-            showMessage('fail', textStatus + ": " + errorThrown);
-        },
-        type: "post",
-        url: baseurl + '/dashboards/updateSettings',
-    });
+    var url = baseurl + '/dashboards/updateSettings'
+    fetchFormDataAjax(url, function(formData) {
+        var $formContainer = $(formData)
+        $formContainer.find('#DashboardValue').val(JSON.stringify(dashBoardSettings))
+        var $theForm = $formContainer.find('form')
+        xhr({
+            data: $theForm.serialize(),
+            success:function (data) {
+                showMessage('success', 'Dashboard settings saved.');
+            },
+            error:function(jqXHR, textStatus, errorThrown) {
+                showMessage('fail', textStatus + ": " + errorThrown);
+            },
+            beforeSend:function() {
+            },
+            type:"post",
+            url: $theForm.attr('action')
+        });
+    })
 }
 
 function updateDashboardWidget(element) {

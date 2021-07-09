@@ -23,6 +23,7 @@ class Attribute extends AppModel
     public $name = 'Attribute';             // TODO general
 
     public $actsAs = array(
+        'AuditLog',
         'SysLogLogable.SysLogLogable' => array( // TODO Audit, logable
             'userModel' => 'User',
             'userKey' => 'user_id',
@@ -204,6 +205,10 @@ class Attribute extends AppModel
             'stringNotEmpty' => array(
                 'rule' => array('stringNotEmpty')
             ),
+            'stringControlCharacters' => array(
+                'rule' => array('stringNotControlCharacters'),
+                'message' => 'Value provided consists purely of control characters and is therefore considered to be empty.'
+            ),
             'validComposite' => array(
                 'rule' => array('validComposite'),
                 'message' => 'Composite type found but the value not in the composite (value1|value2) format.'
@@ -248,9 +253,16 @@ class Attribute extends AppModel
             'message' => array('Invalid ISO 8601 format')
         ),
         'last_seen' => array(
-            'rule' => array('datetimeOrNull'),
-            'required' => false,
-            'message' => array('Invalid ISO 8601 format')
+            'datetimeOrNull' => array(
+                'rule' => array('datetimeOrNull'),
+                'required' => false,
+                'message' => array('Invalid ISO 8601 format')
+            ),
+            'validateLastSeenValue' => array(
+                'rule' => array('validateLastSeenValue'),
+                'required' => false,
+                'message' => array('Last seen value should be greater than first seen value')
+            ),
         )
     );
 
@@ -618,6 +630,23 @@ class Attribute extends AppModel
         return true;
     }
 
+    public function stringNotControlCharacters($fields)
+    {
+        if (ctype_cntrl($this->data['Attribute']['value'])) {
+            return false;
+        }
+        if (in_array($this->data['Attribute']['type'], $this->getCompositeTypes())) {
+            $values = explode('|', $this->data['Attribute']['value']);
+            if (ctype_cntrl($values[0])) {
+                return false;
+            }
+            if (!empty($values[1]) && ctype_cntrl($values[1])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     public function maxTextLength($fields)
     {
         if (strlen($fields['value']) > 65535) {
@@ -713,6 +742,22 @@ class Attribute extends AppModel
             $returnValue = false;
         }
         return $returnValue || is_null($seen);
+    }
+
+    public function validateLastSeenValue($fields)
+    {
+        $ls = $fields['last_seen'];
+        if (is_null($this->data['Attribute']['first_seen']) || is_null($ls)) {
+            return true;
+        }
+        $converted = $this->ISODatetimeToUTC(['Attribute' => [
+            'first_seen' => $this->data['Attribute']['first_seen'],
+            'last_seen' => $ls
+        ]], 'Attribute');
+        if ($converted['Attribute']['first_seen'] > $converted['Attribute']['last_seen']) {
+            return false;
+        }
+        return true;
     }
 
     private $__hexHashLengths = array(
@@ -3603,6 +3648,13 @@ class Attribute extends AppModel
         );
         if (!empty($parentEvent)) {
             $params['parentEvent'] = $parentEvent;
+        }
+        if (!empty($attribute['SharingGroup'])) {
+            $attribute['sharing_group_id'] = $this->SharingGroup->captureSG($attribute['SharingGroup'], $user);
+        } elseif (!empty($attribute['sharing_group_id'])) {
+            if (!$this->SharingGroup->checkIfAuthorised($user, $attribute['sharing_group_id'])) {
+                unset($attribute['sharing_group_id']);
+            }
         }
         if (!$this->save($attribute, $params)) {
             $attribute_short = (isset($attribute['category']) ? $attribute['category'] : 'N/A') . '/' . (isset($attribute['type']) ? $attribute['type'] : 'N/A') . ' ' . (isset($attribute['value']) ? $attribute['value'] : 'N/A');

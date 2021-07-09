@@ -2,8 +2,13 @@
 App::uses('AppModel', 'Model');
 App::uses('RandomTool', 'Tools');
 
+/**
+ * @property Attribute $Attribute
+ */
 class Correlation extends AppModel
 {
+    const CACHE_NAME = 'misp:top_correlations',
+        CACHE_AGE = 'misp:top_correlations_age';
 
     public $belongsTo = array(
         'Attribute' => [
@@ -15,6 +20,8 @@ class Correlation extends AppModel
             'foreignKey' => 'event_id'
         )
     );
+
+    private $exclusions = [];
 
     public function correlateValueRouter($value)
     {
@@ -36,7 +43,7 @@ class Correlation extends AppModel
             $this->Job->save($data);
             $jobId = $this->Job->id;
             $process_id = CakeResque::enqueue(
-                    'email',
+                    'default',
                     'EventShell',
                     ['correlateValue', $value, $jobId],
                     true
@@ -54,7 +61,7 @@ class Correlation extends AppModel
             $a = $a['Attribute'];
         }
         $extraConditions = null;
-        if (in_array($a['type'], array('ip-src', 'ip-dst', 'ip-src|port', 'ip-dst|port'))) {
+        if (in_array($a['type'], ['ip-src', 'ip-dst', 'ip-src|port', 'ip-dst|port'], true)) {
             $extraConditions = $this->cidrCorrelation($a);
         } else if ($a['type'] === 'ssdeep' && function_exists('ssdeep_fuzzy_compare')) {
             $extraConditions = $this->ssdeepCorrelation($a);
@@ -196,21 +203,18 @@ class Correlation extends AppModel
             }
         }
         foreach ($correlatingAttributes as $k => $correlatingAttribute) {
-            foreach ($correlatingAttributes as $k2 => $correlatingAttribute2) {
+            foreach ($correlatingAttributes as $correlatingAttribute2) {
                 $correlations = $this->__addCorrelationEntry($value, $correlatingAttribute, $correlatingAttribute2, $correlations);
             }
             $extraCorrelations = $this->__addAdvancedCorrelations($correlatingAttribute);
             if (!empty($extraCorrelations)) {
-                foreach ($extraCorrelations as $k3 => $extraCorrelation) {
+                foreach ($extraCorrelations as $extraCorrelation) {
                     $correlations = $this->__addCorrelationEntry($value, $correlatingAttribute, $extraCorrelation, $correlations);
-                    $correlations = $this->__addCorrelationEntry($value, $extraCorrelation, $correlatingAttribute, $correlations);
+                    //$correlations = $this->__addCorrelationEntry($value, $extraCorrelation, $correlatingAttribute, $correlations);
                 }
             }
             if ($jobId && $k % 100 === 0) {
-                $job['Job']['progress'] = floor(100 * $k / $count);
-                $job['Job']['date_modified'] = date("Y-m-d H:i:s");
-                $job['Job']['message'] = __('Correlating Attributes based on value. %s attributes correlated out of %s.', $k, $count);
-                $this->Job->save($job);
+                $this->Job->saveProgress($jobId, __('Correlating Attributes based on value. %s attributes correlated out of %s.', $k, $count), floor(100 * $k / $count));
             }
         }
         return $this->__saveCorrelations($correlations);
@@ -286,7 +290,7 @@ class Correlation extends AppModel
         // generate additional correlating attribute list based on the advanced correlations
         $extraConditions = $this->__buildAdvancedCorrelationConditions($a);
         $correlatingValues = array($a['value1']);
-        if (!empty($a['value2']) && !in_array($a['type'], $this->Attribute->primaryOnlyCorrelatingTypes)) {
+        if (!empty($a['value2']) && !in_array($a['type'], $this->Attribute->primaryOnlyCorrelatingTypes, true)) {
             $correlatingValues[] = $a['value2'];
         }
 
@@ -354,12 +358,9 @@ class Correlation extends AppModel
         if (empty($this->exclusions)) {
             try {
                 $redis = $this->setupRedisWithException();
-            } catch (Exception $e) {
-                $redisFail = true;
-            }
-            if (empty($redisFail)) {
-                $this->Correlation = ClassRegistry::init('Correlation');
                 $this->exclusions = $redis->sMembers('misp:correlation_exclusions');
+            } catch (Exception $e) {
+                return false;
             }
         }
         foreach ($this->exclusions as $exclusion) {
@@ -391,7 +392,7 @@ class Correlation extends AppModel
         return false;
     }
 
-    public function ssdeepCorrelation($a)
+    private function ssdeepCorrelation($a)
     {
         if (empty($this->FuzzyCorrelateSsdeep)) {
             $this->FuzzyCorrelateSsdeep = ClassRegistry::init('FuzzyCorrelateSsdeep');
@@ -419,7 +420,7 @@ class Correlation extends AppModel
         return false;
     }
 
-    public function cidrCorrelation($a)
+    private function cidrCorrelation($a)
     {
         $ipValues = array();
         $ip = $a['value1'];
@@ -434,33 +435,8 @@ class Correlation extends AppModel
                 'deleted' => 0,
             );
 
-            if (in_array($this->getDataSource()->config['datasource'], array('Database/Mysql', 'Database/MysqlObserver'))) {
+            if (in_array($this->getDataSource()->config['datasource'], ['Database/Mysql', 'Database/MysqlObserver'])) {
                 // Massive speed up for CIDR correlation. Instead of testing all in PHP, database can do that work much
-                // faster. But these methods are just supported by MySQL.
-                if ($ip_version === 4) {
-                    $startIp = ip2long($networkIp) & ((-1 << (32 - $mask)));
-                    $endIp = $startIp + pow(2, (32 - $mask)) - 1;
-                    // Just fetch IP address that fit in CIDR range.
-                    $conditions['INET_ATON(value1) BETWEEN ? AND ?'] = array($startIp, $endIp);
-
-                    // Just fetch IPv4 address that starts with given prefix. This is fast, because value1 is indexed.
-                    // This optimisation is possible just to mask bigger than 8 bites.
-                    if ($mask >= 8) {
-                        $ipv4Parts = explode('.', $networkIp);
-                        $ipv4Parts = array_slice($ipv4Parts, 0, intval($mask / 8));
-                        $prefix = implode('.', $ipv4Parts);
-                        $conditions['value1 LIKE'] = $prefix . '%';
-                    }
-                } else {
-                    $conditions[] = 'IS_IPV6(value1)';
-                    // Just fetch IPv6 address that starts with given prefix. This is fast, because value1 is indexed.
-                    if ($mask >= 16) {
-                        $ipv6Parts = explode(':', rtrim($networkIp, ':'));
-                        $ipv6Parts = array_slice($ipv6Parts, 0, intval($mask / 16));
-                        $prefix = implode(':', $ipv6Parts);
-                        $conditions['value1 LIKE'] = $prefix . '%';
-                    }
-                }// Massive speed up for CIDR correlation. Instead of testing all in PHP, database can do that work much
                 // faster. But these methods are just supported by MySQL.
                 if ($ip_version === 4) {
                     $startIp = ip2long($networkIp) & ((-1 << (32 - $mask)));
@@ -575,5 +551,129 @@ class Correlation extends AppModel
         }
 
         return true;
+    }
+
+    /**
+     * @return int|bool
+     * @throws Exception
+     */
+    public function generateTopCorrelationsRouter()
+    {
+        if (Configure::read('MISP.background_jobs')) {
+            if (empty($this->Job)) {
+                $this->Job = ClassRegistry::init('Job');
+            }
+            $this->Job->create();
+            $data = array(
+                    'worker' => 'default',
+                    'job_type' => 'generateTopCorrelations',
+                    'job_input' => '',
+                    'status' => 0,
+                    'retries' => 0,
+                    'org_id' => 0,
+                    'org' => 0,
+                    'message' => 'Starting generation of top correlations.',
+            );
+            $this->Job->save($data);
+            $jobId = $this->Job->id;
+            $process_id = CakeResque::enqueue(
+                    'default',
+                    'EventShell',
+                    ['generateTopCorrelations', $jobId],
+                    true
+            );
+            $this->Job->saveField('process_id', $process_id);
+            return $jobId;
+        } else {
+            return $this->generateTopCorrelations();
+        }
+    }
+
+    public function generateTopCorrelations($jobId = false)
+    {
+        try {
+            $redis = $this->setupRedisWithException();
+        } catch (Exception $e) {
+            throw new NotFoundException(__('No redis connection found.'));
+        }
+        $max_id = $this->find('first', [
+            'fields' => ['MAX(id) AS max_id'],
+            'recursive' => -1
+        ]);
+        if (empty($max_id)) {
+            return false;
+        }
+        if ($jobId) {
+            if (empty($this->Job)) {
+                $this->Job = ClassRegistry::init('Job');
+            }
+            $job = $this->Job->find('first', [
+                'recursive' => -1,
+                'conditions' => ['id' => $jobId]
+            ]);
+            if (empty($job)) {
+                $jobId = false;
+            }
+        }
+        $max_id = $max_id[0]['max_id'];
+
+        $redis->del(self::CACHE_NAME);
+        $redis->set(self::CACHE_AGE, time());
+        $chunk_size = 1000000;
+        $max = ceil($max_id / $chunk_size);
+        for ($i = 0; $i < $max; $i++) {
+            $correlations = $this->find('column', [
+                'fields' => ['value'],
+                'conditions' => [
+                    'id >' => $i * $chunk_size,
+                    'id <=' => (($i + 1) * $chunk_size)
+                ]
+            ]);
+            $newElements = count($correlations);
+            $correlations = array_count_values($correlations);
+            $pipeline = $redis->pipeline();
+            foreach ($correlations as $correlation => $count) {
+                $pipeline->zadd(self::CACHE_NAME, ['INCR'], $count, $correlation);
+            }
+            $pipeline->exec();
+            if ($jobId) {
+                $this->Job->saveProgress($jobId, __('Generating top correlations. Processed %s IDs.', ($i * $chunk_size) + $newElements), floor(100 * $i / $max));
+                return $jobId;
+            }
+        }
+        return true;
+    }
+
+    public function findTop(array $query)
+    {
+        try {
+            $redis = $this->setupRedisWithException();
+        } catch (Exception $e) {
+            return false;
+        }
+        $start = $query['limit'] * ($query['page'] -1);
+        $end = $query['limit'] * $query['page'];
+        $list = $redis->zRevRange(self::CACHE_NAME, $start, $end, true);
+        $results = [];
+        foreach ($list as $value => $count) {
+            $results[] = [
+                'Correlation' => [
+                    'value' => $value,
+                    'count' => $count,
+                    'excluded' => $this->__preventExcludedCorrelations(['value1' => $value]),
+                ]
+            ];
+        }
+        return $results;
+    }
+
+    public function getTopTime()
+    {
+        try {
+            $redis = $this->setupRedisWithException();
+        } catch (Exception $e) {
+            return false;
+        }
+        return $redis->get(self::CACHE_AGE);
     }
 }

@@ -71,9 +71,9 @@ class ACLComponent extends Component
                     'viewPicture' => array('*'),
             ),
             'authKeys' => [
-                'add' => ['perm_auth'],
-                'delete' => ['perm_auth'],
-                'edit' => ['perm_auth'],
+                'add' => ['AND' => ['perm_auth', 'not_read_only_authkey']],
+                'delete' => ['AND' => ['perm_auth', 'not_read_only_authkey']],
+                'edit' => ['AND' => ['perm_auth', 'not_read_only_authkey']],
                 'index' => ['perm_auth'],
                 'view' => ['perm_auth']
             ],
@@ -89,12 +89,14 @@ class ACLComponent extends Component
             ],
             'correlationExclusions' => [
                 'add' => [],
+                'edit' => [],
                 'clean' => [],
                 'delete' => [],
                 'index' => [],
                 'view' => []
             ],
             'correlations' => [
+                'generateTopCorrelations' => [],
                 'top' => []
             ],
             'dashboards' => array(
@@ -308,6 +310,8 @@ class ACLComponent extends Component
                 'attachCluster' => array('perm_tagger'),
                 'attachMultipleClusters' => array('perm_tagger'),
                 'delete' => array(),
+                'disable' => array('perm_site_admin'),
+                'enable' => array('perm_site_admin'),
                 'export' => array('*'),
                 'forkTree' => array('*'),
                 'index' => array('*'),
@@ -318,6 +322,7 @@ class ACLComponent extends Component
                 'selectGalaxyNamespace' => array('perm_tagger'),
                 'selectCluster' => array('perm_tagger'),
                 'showGalaxies' => array('*'),
+                'toggle' => array('perm_site_admin'),
                 'update' => array(),
                 'view' => array('*'),
                 'viewGraph' => array('*'),
@@ -343,6 +348,7 @@ class ACLComponent extends Component
                 'unpublish' => array('perm_galaxy_editor'),
                 'updateCluster' => array('perm_galaxy_editor'),
                 'view' => array('*'),
+                'viewCyCatRelations' => array('*'),
                 'viewGalaxyMatrix' => array('*'),
                 'viewRelations' => array('*'),
                 'viewRelationTree' => array('*'),
@@ -375,6 +381,12 @@ class ACLComponent extends Component
                     'testForStolenAttributes' => array(),
                     'pruneUpdateLogs' => array()
             ),
+      'auditLogs' => [
+          'admin_index' => ['perm_audit'],
+          'fullChange' => ['perm_audit'],
+          'eventIndex' => ['*'],
+          'returnDates' => ['*'],
+      ],
       'modules' => array(
         'index' => array('perm_auth'),
         'queryEnrichment' => array('perm_auth'),
@@ -456,9 +468,9 @@ class ACLComponent extends Component
                     'display' => array('*'),
             ),
             'posts' => array(
-                    'add' => array('*'),
-                    'delete' => array('*'),
-                    'edit' => array('*'),
+                    'add' => array('not_read_only_authkey'),
+                    'delete' => array('not_read_only_authkey'),
+                    'edit' => array('not_read_only_authkey'),
                     'pushMessageToZMQ' => array('perm_site_admin')
             ),
             'regexp' => array(
@@ -471,7 +483,7 @@ class ACLComponent extends Component
                     'index' => array('*'),
             ),
             'restClientHistory' => array(
-                    'delete' => array('*'),
+                    'delete' => array('not_read_only_authkey'),
                     'index' => array('*')
             ),
             'roles' => array(
@@ -525,6 +537,7 @@ class ACLComponent extends Component
                     'resetRemoteAuthKey' => array(),
                     'removeOrphanedCorrelations' => array('perm_site_admin'),
                     'rest' => array('perm_auth'),
+                    'openapi' => array('*'),
                     'restartDeadWorkers' => array(),
                     'restartWorkers' => array(),
                     'serverSettings' => array(),
@@ -675,11 +688,12 @@ class ACLComponent extends Component
                     'admin_email' => array('perm_admin'),
                     'admin_filterUserIndex' => array('perm_admin'),
                     'admin_index' => array('perm_admin'),
+                    'admin_massToggleField' => array('perm_admin'),
                     'admin_monitor' => array('perm_site_admin'),
                     'admin_quickEmail' => array('perm_admin'),
                     'admin_view' => array('perm_admin'),
                     'attributehistogram' => array('*'),
-                    'change_pw' => ['AND' => ['self_management_enabled', 'password_change_enabled']],
+                    'change_pw' => ['AND' => ['self_management_enabled', 'password_change_enabled', 'not_read_only_authkey']],
                     'checkAndCorrectPgps' => array(),
                     'checkIfLoggedIn' => array('*'),
                     'dashboard' => array('*'),
@@ -697,7 +711,7 @@ class ACLComponent extends Component
                     'register' => array('*'),
                     'registrations' => array('perm_site_admin'),
                     'resetAllSyncAuthKeys' => array(),
-                    'resetauthkey' => ['AND' => ['self_management_enabled', 'perm_auth']],
+                    'resetauthkey' => ['AND' => ['self_management_enabled', 'perm_auth', 'not_read_only_authkey']],
                     'request_API' => array('*'),
                     'routeafterlogin' => array('*'),
                     'statistics' => array('*'),
@@ -713,21 +727,25 @@ class ACLComponent extends Component
             'userSettings' => array(
                     'index' => array('*'),
                     'view' => array('*'),
-                    'setSetting' => array('*'),
+                    'setSetting' => array('not_read_only_authkey'),
                     'getSetting' => array('*'),
-                    'delete' => array('*'),
-                    'setHomePage' => array('*'),
+                    'delete' => array('not_read_only_authkey'),
+                    'setHomePage' => array('not_read_only_authkey'),
                 'eventIndexColumnToggle' => ['*'],
             ),
             'warninglists' => array(
-                    'checkValue' => array('perm_auth'),
-                    'delete' => array(),
-                    'enableWarninglist' => array(),
-                    'getToggleField' => array(),
-                    'index' => array('*'),
-                    'toggleEnable' => array(),
-                    'update' => array(),
-                    'view' => array('*')
+                'checkValue' => array('perm_auth'),
+                'delete' => ['perm_warninglist'],
+                'enableWarninglist' => ['perm_warninglist'],
+                'getToggleField' => ['perm_warninglist'],
+                'index' => array('*'),
+                'toggleEnable' => ['perm_warninglist'],
+                'update' => array(),
+                'view' => array('*'),
+                'edit' => ['perm_warninglist'],
+                'add' => ['perm_warninglist'],
+                'export' => ['*'],
+                'import' => ['perm_warninglist'],
             ),
             'allowedlists' => array(
                     'admin_add' => array('perm_regexp_access'),
@@ -774,6 +792,10 @@ class ACLComponent extends Component
         };
         $this->dynamicChecks['delegation_enabled'] = function (array $user) {
             return (bool)Configure::read('MISP.delegation');
+        };
+        // Returns true if current user is not using advanced auth key or if authkey is not read only
+        $this->dynamicChecks['not_read_only_authkey'] = function (array $user) {
+            return !isset($user['authkey_read_only']) || !$user['authkey_read_only'];
         };
     }
 

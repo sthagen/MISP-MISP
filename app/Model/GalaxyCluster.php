@@ -13,6 +13,7 @@ class GalaxyCluster extends AppModel
     public $recursive = -1;
 
     public $actsAs = array(
+        'AuditLog',
         'SysLogLogable.SysLogLogable' => array( // TODO Audit, logable
             'userModel' => 'User',
             'userKey' => 'user_id',
@@ -601,7 +602,7 @@ class GalaxyCluster extends AppModel
         $this->GalaxyClusterRelation->GalaxyClusterRelationTag->deleteAll(['GalaxyClusterRelationTag.galaxy_cluster_relation_id' => $relation_ids], false, false);
         $this->Log = ClassRegistry::init('Log');
         $this->Log->createLogEntry('SYSTEM', 'wipe_default', 'GalaxyCluster', 0, "Wiping default galaxy clusters");
-    
+
     }
 
     /**
@@ -694,15 +695,17 @@ class GalaxyCluster extends AppModel
             }
             $modelsToUnset = array('GalaxyClusterRelation', 'TargetingClusterRelation');
             foreach ($modelsToUnset as $modelName) {
-                foreach ($cluster['GalaxyCluster'][$modelName] as $i => $relation) {
-                    unset($clusters[$k]['GalaxyCluster'][$modelName][$i]['id']);
-                    unset($clusters[$k]['GalaxyCluster'][$modelName][$i]['galaxy_cluster_id']);
-                    unset($clusters[$k]['GalaxyCluster'][$modelName][$i]['referenced_galaxy_cluster_id']);
-                    if (isset($relation['Tag'])) {
-                        foreach ($relation['Tag'] as $j => $tags) {
-                            unset($clusters[$k]['GalaxyCluster'][$modelName][$i]['Tag'][$j]['id']);
-                            unset($clusters[$k]['GalaxyCluster'][$modelName][$i]['Tag'][$j]['org_id']);
-                            unset($clusters[$k]['GalaxyCluster'][$modelName][$i]['Tag'][$j]['user_id']);
+                if (!empty($cluster['GalaxyCluster'][$modelName])) {
+                    foreach ($cluster['GalaxyCluster'][$modelName] as $i => $relation) {
+                        unset($clusters[$k]['GalaxyCluster'][$modelName][$i]['id']);
+                        unset($clusters[$k]['GalaxyCluster'][$modelName][$i]['galaxy_cluster_id']);
+                        unset($clusters[$k]['GalaxyCluster'][$modelName][$i]['referenced_galaxy_cluster_id']);
+                        if (isset($relation['Tag'])) {
+                            foreach ($relation['Tag'] as $j => $tags) {
+                                unset($clusters[$k]['GalaxyCluster'][$modelName][$i]['Tag'][$j]['id']);
+                                unset($clusters[$k]['GalaxyCluster'][$modelName][$i]['Tag'][$j]['org_id']);
+                                unset($clusters[$k]['GalaxyCluster'][$modelName][$i]['Tag'][$j]['user_id']);
+                            }
                         }
                     }
                 }
@@ -2129,5 +2132,45 @@ class GalaxyCluster extends AppModel
             'contain' => ['Tag']
         ]);
         return empty($cluster['Tag']['id']) ? false : $cluster['Tag']['id'];
+    }
+
+    public function getCyCatRelations($cluster)
+    {
+        $CyCatRelations = [];
+        if (empty(Configure::read('Plugin.CyCat_enable'))) {
+            return $CyCatRelations;
+        }
+        App::uses('SyncTool', 'Tools');
+        $cycatUrl = empty(Configure::read("Plugin.CyCat_url")) ? 'https://api.cycat.org': Configure::read("Plugin.CyCat_url");
+        $syncTool = new SyncTool();
+        if (empty($this->HttpSocket)) {
+            $this->HttpSocket = $syncTool->createHttpSocket();
+        }
+        $request = array(
+            'header' => array(
+                'Accept' => array('application/json'),
+                'MISP-version' => implode('.', $this->checkMISPVersion()),
+                'MISP-uuid' => Configure::read('MISP.uuid'),
+                'x-ground-truth' => 'Dogs are superior to cats'
+            )
+        );
+        $response = $this->HttpSocket->get($cycatUrl . '/lookup/' . $cluster['GalaxyCluster']['uuid'], array(), $request);
+        if ($response->code === '200') {
+            $response = $this->HttpSocket->get($cycatUrl . '/relationships/' . $cluster['GalaxyCluster']['uuid'], array(), $request);
+            if ($response->code === '200') {
+                $relationUUIDs = json_decode($response->body);
+                if (!empty($relationUUIDs)) {
+                    foreach ($relationUUIDs as $relationUUID) {
+                        $response = $this->HttpSocket->get($cycatUrl . '/lookup/' . $relationUUID, array(), $request);
+                        if ($response->code === '200') {
+                            $lookupResult = json_decode($response->body, true);
+                            $lookupResult['uuid'] = $relationUUID;
+                            $CyCatRelations[$relationUUID] = $lookupResult;
+                        }
+                    }
+                }
+            }
+        }
+        return $CyCatRelations;
     }
 }
