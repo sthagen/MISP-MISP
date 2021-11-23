@@ -137,6 +137,11 @@ installCore () {
     sudo mkdir /var/www/.cache/
     sudo chown ${WWW_USER}:${WWW_USER} /var/www/.cache
 
+    # install python-stix dependencies
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install ordered-set python-dateutil six weakrefmethod
+    debug "Install misp-stix"
+    ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install ${PATH_TO_MISP}/app/files/scripts/misp-stix
+
     debug "Install PyMISP"
     ${SUDO_WWW} ${PATH_TO_MISP}/venv/bin/pip install ${PATH_TO_MISP}/PyMISP
 
