@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 class BackgroundJob implements JsonSerializable
 {
-    public const
+    const
         STATUS_WAITING = 1,
         STATUS_RUNNING = 2,
         STATUS_FAILED = 3,
@@ -66,10 +66,8 @@ class BackgroundJob implements JsonSerializable
 
     /**
      * Run the job command
-     *
-     * @return self
      */
-    public function run(): self
+    public function run(): void
     {
         $descriptorSpec = [
             1 => ["pipe", "w"], // stdout
@@ -90,28 +88,17 @@ class BackgroundJob implements JsonSerializable
             ['BACKGROUND_JOB_ID' => $this->id]
         );
 
-        $stdout = stream_get_contents($pipes[1]);
-        $this->setOutput($stdout);
-        fclose($pipes[1]);
-
-        $stderr = stream_get_contents($pipes[2]);
-        $this->setError($stderr);
-        fclose($pipes[2]);
+        $this->output = stream_get_contents($pipes[1]);
+        $this->error = stream_get_contents($pipes[2]);
 
         $this->returnCode = proc_close($process);
 
         if ($this->returnCode === 0 && empty($stderr)) {
             $this->setStatus(BackgroundJob::STATUS_COMPLETED);
             $this->setProgress(100);
-
-            CakeLog::info("[JOB ID: {$this->id()}] - completed.");
         } else {
             $this->setStatus(BackgroundJob::STATUS_FAILED);
-
-            CakeLog::error("[JOB ID: {$this->id()}] - failed with error code {$this->returnCode}. STDERR: {$stderr}. STDOUT: {$stdout}.");
         }
-
-        return $this;
     }
 
     public function jsonSerialize(): array
@@ -184,27 +171,27 @@ class BackgroundJob implements JsonSerializable
         return $this->returnCode;
     }
 
-    public function setStatus(int $status): void
+    public function setStatus(int $status)
     {
         $this->status = $status;
     }
 
-    public function setOutput(?string $output): void
+    public function setOutput(?string $output)
     {
         $this->output = $output;
     }
 
-    public function setError(?string $error): void
+    public function setError(?string $error)
     {
         $this->error = $error;
     }
 
-    public function setProgress(int $progress): void
+    public function setProgress(int $progress)
     {
         $this->progress = $progress;
     }
 
-    public function setUpdatedAt(int $updatedAt): void
+    public function setUpdatedAt(int $updatedAt)
     {
         $this->updatedAt = $updatedAt;
     }
