@@ -974,6 +974,7 @@ class Event extends AppModel
                     }
                 }
                 if (!$serverFound) {
+                    $this->log("Error when pushing event {$event['Event']['uuid']} to remote server {$server['Server']['id']}: server not found in sharing group.");
                     return 403;
                 }
             }
@@ -986,18 +987,21 @@ class Event extends AppModel
                 }
             }
             if (!$orgFound) {
+                $this->log("Error when pushing event {$event['Event']['uuid']} to remote server {$server['Server']['id']}: org not found in sharing group.");
                 return 403;
             }
         }
         $serverModel = ClassRegistry::init('Server');
         $server = $serverModel->eventFilterPushableServers($event, array($server));
         if (empty($server)) {
+            $this->log("Error when pushing event {$event['Event']['uuid']} to remote server {$server['Server']['id']}: event doesn't match sever push rules.");
             return 403;
         }
         $server = $server[0];
         if ($this->checkDistributionForPush($event, $server, 'Event')) {
             $event = $this->__updateEventForSync($event, $server);
         } else {
+            $this->log("Error when pushing event {$event['Event']['uuid']} to remote server {$server['Server']['id']}: event doesn't match distribution.");
             return 403;
         }
         return $event;
@@ -6186,21 +6190,30 @@ class Event extends AppModel
         $eventLock->insertLock($user, $id);
     }
 
-    private function __logUploadResult($server, $event, $newTextBody)
+    /**
+     * @param array $server
+     * @param array $event
+     * @param mixed $newTextBody
+     * @throws Exception
+     */
+    private function __logUploadResult(array $server, array $event, $newTextBody)
     {
+        if (!is_string($newTextBody)) {
+            $newTextBody = JsonTool::encode($newTextBody);
+        }
+
         $this->Log = ClassRegistry::init('Log');
         $this->Log->create();
         $this->Log->save(array(
-                'org' => 'SYSTEM',
-                'model' => 'Server',
-                'model_id' => $server['Server']['id'],
-                'email' => 'SYSTEM',
-                'action' => 'warning',
-                'user_id' => 0,
-                'title' => 'Uploading Event (' . $event['Event']['id'] . ') to Server (' . $server['Server']['id'] . ')',
-                'change' => 'Returned message: ' . $newTextBody,
+            'org' => 'SYSTEM',
+            'model' => 'Server',
+            'model_id' => $server['Server']['id'],
+            'email' => 'SYSTEM',
+            'action' => 'warning',
+            'user_id' => 0,
+            'title' => 'Uploading Event (' . $event['Event']['id'] . ') to Server (' . $server['Server']['id'] . ')',
+            'change' => 'Returned message: ' . $newTextBody,
         ));
-        return false;
     }
 
     /**
@@ -6740,7 +6753,7 @@ class Event extends AppModel
             )
         );
         if (!empty($original_uuid)) {
-            return ['Attribute']['uuid'];
+            return $original_uuid['Attribute']['uuid'];
         }
         $original_uuid = $this->Object->find(
             'first',
@@ -7581,7 +7594,7 @@ class Event extends AppModel
             if ($redis === false) {
                 $banStatus['error'] = true;
                 $banStatus['active'] = true;
-                $banStatus['message'] =  __('Reason: Could not reach redis to chech republish emailing ban status.');
+                $banStatus['message'] =  __('Reason: Could not reach redis to check republish emailing ban status.');
                 return $banStatus;
             }
             $redisKey = "misp:event_alert_republish_ban:{$event['Event']['uuid']}";
