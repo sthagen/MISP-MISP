@@ -281,7 +281,7 @@ class EventShell extends AppShell
         $userId = $this->args[0];
         $jobId = $this->args[1];
         $eventId = $this->args[2];
-        $oldpublish = $this->args[3];
+        $oldpublish = isset($this->args[3]) ? $this->args[3] : null;
         $user = $this->getUser($userId);
         $this->Event->sendAlertEmail($eventId, $user, $oldpublish, $jobId);
     }
@@ -439,7 +439,7 @@ class EventShell extends AppShell
         }
 
         $this->Event->Behaviors->unload('SysLogLogable.SysLogLogable');
-        $result = $this->Event->publish_sightings($id, $passAlong, $sightingsUuidsToPush);
+        $result = $this->Event->publishSightings($id, $passAlong, $sightingsUuidsToPush);
 
         $count = count($sightingsUuidsToPush);
         $message = $count === 0 ? "All sightings published" : "$count sightings published";

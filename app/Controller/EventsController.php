@@ -767,19 +767,26 @@ class EventsController extends AppController
      */
     private function __indexRestResponse(array $passedArgs)
     {
+        $isSync = $skipProtected = false;
+        if (!empty($this->request->header('misp-version'))) {
+            $isSync = true;
+            if (version_compare($this->request->header('misp-version'), '2.4.156') < 0) {
+                $skipProtected = true;
+            }
+        }
         $fieldNames = $this->Event->schema();
         $minimal = !empty($passedArgs['searchminimal']) || !empty($passedArgs['minimal']);
         if ($minimal) {
             $rules = [
                 'recursive' => -1,
-                'fields' => array('id', 'timestamp', 'sighting_timestamp', 'published', 'uuid'),
-                'contain' => array('Orgc.uuid'),
+                'fields' => array('id', 'timestamp', 'sighting_timestamp', 'published', 'uuid', 'protected'),
+                'contain' => array('Orgc.uuid', 'CryptographicKey.fingerprint'),
             ];
         } else {
             // Remove user ID from fetched fields
             unset($fieldNames['user_id']);
             $rules = [
-                'contain' => ['EventTag'],
+                'contain' => ['EventTag', 'CryptographicKey.fingerprint'],
                 'fields' => array_keys($fieldNames),
             ];
         }
@@ -829,9 +836,12 @@ class EventsController extends AppController
 
             $events = $absolute_total === 0 ? [] : $this->Event->find('all', $rules);
         }
-
         $isCsvResponse = $this->response->type() === 'text/csv';
-
+        try {
+            $instanceFingerprint = $this->Event->CryptographicKey->ingestInstanceKey();
+        } catch (Exception $e) {
+            $instanceFingerprint = null;
+        }
         if (!$minimal) {
             // Collect all tag IDs that are events
             $tagIds = [];
@@ -874,11 +884,26 @@ class EventsController extends AppController
             // Fetch all org and sharing groups that are in events
             $orgIds = [];
             $sharingGroupIds = [];
-            foreach ($events as $event) {
+            foreach ($events as $k => $event) {
                 $orgIds[$event['Event']['org_id']] = true;
                 $orgIds[$event['Event']['orgc_id']] = true;
                 $sharingGroupIds[$event['Event']['sharing_group_id']] = true;
+                if ($event['Event']['protected']) {
+                    if ($skipProtected) {
+                        unset($events[$k]);
+                        continue;
+                    }
+                    foreach ($event['CryptographicKey'] as $cryptoKey) {
+                        if ($instanceFingerprint === $cryptoKey['fingerprint']) {
+
+                            continue 2;
+                        }
+                    }
+                    unset($events[$k]);
+                    continue;
+                }
             }
+            $events = array_values($events);
             if (!empty($orgIds)) {
                 $orgs = $this->Event->Org->find('all', [
                     'conditions' => ['Org.id' => array_keys($orgIds)],
@@ -890,7 +915,6 @@ class EventsController extends AppController
             } else {
                 $orgs = [];
             }
-
             unset($sharingGroupIds[0]);
             if (!empty($sharingGroupIds)) {
                 $sharingGroups = $this->Event->SharingGroup->find('all', [
@@ -901,7 +925,6 @@ class EventsController extends AppController
                 unset($sharingGroupIds);
                 $sharingGroups = array_column(array_column($sharingGroups, 'SharingGroup'), null, 'id');
             }
-
             foreach ($events as $key => $event) {
                 $temp = $event['Event'];
                 $temp['Org'] = $orgs[$temp['org_id']];
@@ -923,10 +946,33 @@ class EventsController extends AppController
                 $events = array('Event' => $events);
             }
         } else {
+            // We do not want to allow instances to pull our data that can't make sense of protected mode events
+            $skipProtected = (
+                !empty($this->request->header('misp-version')) &&
+                version_compare($this->request->header('misp-version'), '2.4.156') < 0
+            );
             foreach ($events as $key => $event) {
+                if ($event['Event']['protected']) {
+                    if ($skipProtected) {
+                        unset($events[$key]);
+                        continue;
+                    }
+                    foreach ($event['CryptographicKey'] as $cryptoKey) {
+                        if ($instanceFingerprint === $cryptoKey['fingerprint']) {
+                            $event['Event']['orgc_uuid'] = $event['Orgc']['uuid'];
+                            unset($event['Event']['protected']);
+                            $events[$key] = $event['Event'];
+                            continue 2;
+                        }
+                    }
+                    unset($events[$key]);
+                    continue;
+                }
                 $event['Event']['orgc_uuid'] = $event['Orgc']['uuid'];
+                unset($event['Event']['protected']);
                 $events[$key] = $event['Event'];
             }
+            $events = array_values($events);
         }
 
         if ($isCsvResponse) {
@@ -991,6 +1037,10 @@ class EventsController extends AppController
 
     private function __attachInfoToEvents(array $columns, array $events)
     {
+        if (empty($events)) {
+            return [];
+        }
+
         $user = $this->Auth->user();
 
         if (in_array('tags', $columns, true) || in_array('clusters', $columns, true)) {
@@ -1602,6 +1652,15 @@ class EventsController extends AppController
         $this->set('title_for_layout', __('Event #%s', $event['Event']['id']));
         $this->set('attribute_count', $attributeCount);
         $this->set('object_count', $objectCount);
+        $this->set('warnings', $this->Event->generateWarnings($event));
+        $this->set('menuData', array('menuList' => 'event', 'menuItem' => 'viewEvent'));
+        $this->set('mayModify', $this->__canModifyEvent($event));
+        try {
+            $instanceKey = $this->Event->CryptographicKey->ingestInstanceKey();
+        } catch (Exception $e) {
+            $instanceKey = null;
+        }
+        $this->set('instanceFingerprint', $instanceKey);
         $this->__eventViewCommon($user);
     }
 
@@ -1798,8 +1857,10 @@ class EventsController extends AppController
         if (isset($namedParams['galaxyAttachedAttributes']) && $namedParams['galaxyAttachedAttributes'] !== '') {
             $this->__applyQueryString($event, $namedParams['galaxyAttachedAttributes'], 'Tag.name');
         }
-
         if ($this->_isRest()) {
+            if ($this->RestResponse->isAutomaticTool() && $event['Event']['protected']) {
+                $this->RestResponse->signContents = true;
+            }
             return $this->__restResponse($event);
         }
 
@@ -2079,6 +2140,27 @@ class EventsController extends AppController
 
                 // Distribution, reporter for the events pushed will be the owner of the authentication key
                 $this->request->data['Event']['user_id'] = $this->Auth->user('id');
+            }
+            if (
+                !empty($this->request->data['Event']['protected']) &&
+                $this->Auth->user('Role')['perm_sync'] &&
+                !$this->Auth->user('Role')['perm_site_admin']
+            ) {
+                $pgp_signature = $this->request->header('x-pgp-signature');
+                if (empty($pgp_signature)) {
+                    throw new MethodNotAllowedException(__('Protected event failed signature validation as no key was provided.'));
+                }
+                $raw_data = $this->request->input();
+                if (
+                    !$this->Event->CryptographicKey->validateProtectedEvent(
+                        $raw_data,
+                        $this->Auth->user(),
+                        $pgp_signature,
+                        $this->request->data
+                    )
+                ) {
+                    throw new MethodNotAllowedException(__('Protected event failed signature validation.'));
+                }
             }
             if (!empty($this->data)) {
                 if (!isset($this->request->data['Event']['distribution'])) {
@@ -2477,10 +2559,10 @@ class EventsController extends AppController
         }
     }
 
-    public function edit($id = null)
+    public function populate($id)
     {
         if ($this->request->is('get') && $this->_isRest()) {
-            return $this->RestResponse->describe('Events', 'edit', false, $this->response->type());
+            return $this->RestResponse->describe('Events', 'populate', false, $this->response->type());
         }
         $event = $this->Event->fetchSimpleEvent($this->Auth->user(), $id, ['contain' => ['Orgc']]);
         if (!$event) {
@@ -2495,6 +2577,98 @@ class EventsController extends AppController
             } else {
                 $this->Flash->error($message);
                 $this->redirect(array('controller' => 'events', 'action' => 'index'));
+            }
+        }
+        if ($this->request->is('post') || $this->request->is('put')) {
+            if (isset($this->request->data['Event'])) {
+                $this->request->data = $this->request->data['Event'];
+            }
+            if (isset($this->request->data['json'])) {
+                $this->request->data = json_decode($this->request->data['json'], true);
+            }
+            $eventToSave = $event;
+            $capturedObjects = ['Attribute', 'Object', 'Tag', 'Galaxy', 'EventReport'];
+            foreach ($capturedObjects as $objectType) {
+                if (!empty($this->request->data[$objectType])) {
+                    $eventToSave['Event'][$objectType] = $this->request->data[$objectType];
+                }
+            }
+            $eventToSave['Event']['published'] = 0;
+            $date = new DateTime();
+            $eventToSave['Event']['timestamp'] = $date->getTimestamp();
+            $result = $this->Event->_edit($eventToSave, $this->Auth->user(), $id);
+            if ($this->_isRest()) {
+                if ($result === true) {
+                    // REST users want to see the newly created event
+                    $metadata = $this->request->param('named.metadata');
+                    $results = $this->Event->fetchEvent($this->Auth->user(), ['eventid' => $id, 'metadata' => $metadata]);
+                    $event = $results[0];
+                    return $this->__restResponse($event);
+                } else {
+                    $message = 'Error';
+                    if ($this->_isRest()) {
+                        if (isset($result['error'])) {
+                            $errors = $result['error'];
+                        } else {
+                            $errors = $result;
+                        }
+                        return $this->RestResponse->saveFailResponse('Events', 'populate', $id, $errors, $this->response->type());
+                    } else {
+                        $this->set(array('message' => $message,'_serialize' => array('message')));  // $this->Event->validationErrors
+                        $this->render('populate');
+                    }
+                    return false;
+                }
+            }
+            if ($result) {
+                $this->Flash->success(__('The event has been saved'));
+                $this->redirect(array('action' => 'view', $id));
+            } else {
+                $this->Flash->error(__('The event could not be saved. Please, try again.'));
+            }
+        }
+        $this->set('event', $event);
+    }
+
+    public function edit($id = null)
+    {
+        if ($this->request->is('get') && $this->_isRest()) {
+            return $this->RestResponse->describe('Events', 'edit', false, $this->response->type());
+        }
+        $event = $this->Event->fetchSimpleEvent($this->Auth->user(), $id, ['contain' => ['Orgc', 'CryptographicKey']]);
+        if (!$event) {
+            throw new NotFoundException(__('Invalid event'));
+        }
+        $id = $event['Event']['id']; // change possible event UUID with real ID
+        // check if private and user not authorised to edit
+        if (!$this->__canModifyEvent($event) && !($this->userRole['perm_sync'] && $this->_isRest())) {
+            $message = __('You are not authorised to do that.');
+            if ($this->_isRest()) {
+                throw new ForbiddenException($message);
+            } else {
+                $this->Flash->error($message);
+                $this->redirect(array('controller' => 'events', 'action' => 'index'));
+            }
+        }
+        if (
+            !empty($event['Event']['protected']) &&
+            $this->Auth->user('Role')['perm_sync'] &&
+            !$this->Auth->user('Role')['perm_site_admin']
+        ) {
+            $pgp_signature = $this->request->header('x-pgp-signature');
+            if (empty($pgp_signature)) {
+                throw new MethodNotAllowedException(__('Protected event failed signature validation as no key was provided.'));
+            }
+            $raw_data = $this->request->input();
+            if (
+                !$this->Event->CryptographicKey->validateProtectedEvent(
+                    $raw_data,
+                    $this->Auth->user(),
+                    $pgp_signature,
+                    $event
+                )
+            ) {
+                throw new MethodNotAllowedException(__('Protected event failed signature validation.'));
             }
         }
         if (!$this->_isRest()) {
@@ -3134,6 +3308,62 @@ class EventsController extends AppController
         return $difference . " " . $periods[$j] . " ago";
     }
 
+    public function restSearchExport($id=null, $returnFormat=null)
+    {
+        if (is_null($returnFormat)) {
+            if (is_numeric($id)) {
+                $idList = [$id];
+            } else {
+                $idList = json_decode($id, true);
+            }
+            if (empty($idList)) {
+                throw new NotFoundException(__('Invalid input.'));
+            }
+            $this->set('idList', $idList);
+            $this->set('exportFormats', array_keys($this->Event->validFormats));
+            $this->render('ajax/eventRestSearchExportConfirmationForm');
+        } else {
+            $returnFormat = empty($this->Event->validFormats[$returnFormat]) ? 'json' : $returnFormat;
+            $idList = $id;
+            if (!is_array($idList)) {
+                if (is_numeric($idList) || Validation::uuid($idList)) {
+                    $idList = array($idList);
+                } else {
+                    $idList = $this->Event->jsonDecode($idList);
+                }
+            }
+            if (empty($idList)) {
+                throw new NotFoundException(__('Invalid input.'));
+            }
+            $filters = [
+                'eventid' => $idList
+            ];
+
+            $elementCounter = 0;
+            $renderView = false;
+            $validFormat = $this->Event->validFormats[$returnFormat];
+            $responseType = $validFormat[0];
+            $final = $this->Event->restSearch($this->Auth->user(), $returnFormat, $filters, false, false, $elementCounter, $renderView);
+            if (!empty($renderView) && !empty($final)) {
+                $final = json_decode($final->intoString(), true);
+                foreach ($final as $key => $data) {
+                    $this->set($key, $data);
+                }
+                $this->set('responseType', $responseType);
+                $this->set('returnFormat', $returnFormat);
+                $this->set('renderView', $renderView);
+                $this->render('/Events/eventRestSearchExportResult');
+            } else {
+                $filename = $this->RestSearch->getFilename($filters, 'Event', $responseType);
+                return $this->RestResponse->viewData($final, $responseType, false, true, $filename, [
+                    'X-Result-Count' => $elementCounter,
+                    'X-Export-Module-Used' => $returnFormat,
+                    'X-Response-Format' => $responseType
+                ]);
+            }
+        }
+    }
+
     public function xml($key, $eventid = false, $withAttachment = false, $tags = false, $from = false, $to = false, $last = false)
     {
         $this->_legacyAPIRemap(array(
@@ -3222,26 +3452,6 @@ class EventsController extends AppController
                 throw new Exception(__('Filename not allowed.'));
             }
 
-            App::uses('FileAccessTool', 'Tools');
-            $iocData = FileAccessTool::readFromFile($this->data['Event']['submittedioc']['tmp_name'], $this->data['Event']['submittedioc']['size']);
-
-        // write
-        $attachments_dir = Configure::read('MISP.attachments_dir') ?: (APP . 'files');
-        $rootDir = $attachments_dir . DS . $id . DS;
-            App::uses('Folder', 'Utility');
-            $dir = new Folder($rootDir . 'ioc', true);
-            $destPath = $rootDir . 'ioc';
-            App::uses('File', 'Utility');
-            $iocFile = new File($destPath . DS . $this->data['Event']['submittedioc']['name']);
-            $result = $iocFile->write($iocData);
-            if (!$result) {
-                $this->Flash->error(__('Problem with writing the IoC file. Please report to site admin.'));
-            }
-
-            // open the xml
-            $xmlFilePath = $destPath . DS . $this->data['Event']['submittedioc']['name'];
-            $xmlFileData = FileAccessTool::readFromFile($xmlFilePath, $this->data['Event']['submittedioc']['size']);
-
             // Load event and populate the event data
             $this->Event->id = $id;
             $this->Event->recursive = -1;
@@ -3261,6 +3471,8 @@ class EventsController extends AppController
                 }
             }
             // read XML
+            App::uses('FileAccessTool', 'Tools');
+            $xmlFileData = FileAccessTool::readFromFile($this->data['Event']['submittedioc']['tmp_name'], $this->data['Event']['submittedioc']['size']);
             $event = $this->IOCImport->readXML($xmlFileData, $id, $dist, $this->data['Event']['submittedioc']['name']);
 
             // make some changes to have $saveEvent in the format that is needed to save the event together with its attributes
@@ -4137,6 +4349,11 @@ class EventsController extends AppController
                 throw new NotFoundException(__('Event not found or you are not authorised to view it.'));
             }
             $imports = array(
+                    'MISP JSON' => array(
+                            'url' => $this->baseurl . '/events/populate/'.$id,
+                            'text' => __('Populate using a JSON file containing MISP event content data'),
+                            'ajax' => false
+                    ),
                     'freetext' => array(
                             'url' => $this->baseurl . '/events/freeTextImport/' . $id,
                             'text' => __('Freetext Import'),
@@ -5930,7 +6147,7 @@ class EventsController extends AppController
 
         if ($this->request->is('json')) {
             App::uses('JSONConverterTool', 'Tools');
-            if ($this->RestResponse->isAutomaticTool()) {
+            if ($this->RestResponse->isAutomaticTool() && empty($event['Event']['protected'])) {
                 foreach (JSONConverterTool::streamConvert($event) as $part) {
                     $tmpFile->write($part);
                 }
@@ -5949,5 +6166,62 @@ class EventsController extends AppController
             throw new Exception("Invalid format, only JSON or XML is supported.");
         }
         return $this->RestResponse->viewData($tmpFile, $format, false, true);
+    }
+
+    public function protect($id)
+    {
+        $this->__toggleProtect($id, true);
+    }
+
+    public function unprotect($id)
+    {
+        $this->__toggleProtect($id, false);
+    }
+
+    private function __toggleProtect($id, $protect)
+    {
+        $id = $this->Toolbox->findIdByUuid($this->Event, $id);
+        $event = $this->Event->fetchSimpleEvent($this->Auth->user(), $id, ['contain' => ['Orgc']]);
+        if (
+            (!$this->_isSiteAdmin && $event['Event']['orgc_id'] !== $this->Auth->user('org_id')) ||
+            !$event ||
+            !$this->__canModifyEvent($event)
+        ) {
+            throw new NotFoundException(__('Invalid event'));
+        }
+        if ($this->request->is('post')) {
+            $event['Event']['protected'] = $protect;
+            $event['Event']['timestamp'] = time();
+            $event['Event']['published'] = false;
+            if ($this->Event->save($event)) {
+                $message = __('Event switched to %s mode.', $protect ? __('protected') : __('unprotected'));
+                if ($this->_isRest()) {
+                    return $this->RestResponse->saveSuccessResponse('events', $protect ? 'protect' : 'unprotect', $id, false, $message);
+                } else {
+                    $this->Flash->success($message);
+                    $this->redirect(['controller' => 'events', 'action' => 'view', $id]);
+                }
+            } else {
+                $message = __('Something went wrong - could not switch event to %s mode.', $protect ? __('protected') : __('unprotected'));
+                if ($this->_isRest()) {
+                    return $this->RestResponse->saveFailResponse('Events', $protect ? 'protect' : 'unprotect', false, $message, $this->response->type());
+                } else {
+                    $this->Flash->error($message);
+                    $this->redirect(['controller' => 'events', 'action' => 'view', $id]);
+                }
+            }
+        } else {
+            $this->set('id', $id);
+            $this->set('title', $protect ? __('Protect event') : __('Remove event protection'));
+            $this->set(
+                'question',
+                $protect ?
+                __('Are you sure you want switch the event to protected mode? The event and its subsequent modifications will be rejected by MISP instances that you synchronise with, unless the hop through which the event is propagated has their signing key in the list of event signing keys.'):
+                __('Are you sure you want to switch the event to unprotected mode? Unprotected mode is the default behaviour of MISP events, with creation and modification being purely limited by the distribution mechanism and eligible sync users.')
+            );
+            $this->set('actionName', $protect ? __('Switch to protected mode') : __('Remove protected mode'));
+            $this->layout = 'ajax';
+            $this->render('/genericTemplates/confirm');
+        }
     }
 }

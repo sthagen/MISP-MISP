@@ -285,6 +285,13 @@ $divider = $this->element('/genericElements/SideMenu/side_menu_divider');
                     }
                 break;
 
+                case 'event_restsearch_export':
+                    echo $this->element('/genericElements/SideMenu/side_menu_link', array(
+                        'url' => $baseurl . '/events/index',
+                        'text' => __('List Events')
+                    ));
+                    break;
+
                 case 'tag-collections':
                     echo $this->element('/genericElements/SideMenu/side_menu_link', array(
                         'url' => $baseurl . '/tag_collections/index',
@@ -672,6 +679,25 @@ $divider = $this->element('/genericElements/SideMenu/side_menu_divider');
                             'text' => __('View Sharing Group')
                         ));
                     }
+                    if ($menuItem === 'editMG' || ($menuItem == 'viewMG' && $isAclSharingGroup)) {
+                        echo $this->element('/genericElements/SideMenu/side_menu_link', array(
+                            'element_id' => 'editMG',
+                            'url' => $baseurl . '/sharing_group_blueprints/edit/' . h($id),
+                            'text' => __('Edit Sharing Group Blueprint')
+                        ));
+                        echo $this->element('/genericElements/SideMenu/side_menu_link', array(
+                            'element_id' => 'viewMG',
+                            'url' => $baseurl . '/sharing_group_blueprints/view/' . h($id),
+                            'text' => __('View Sharing Group Blueprint')
+                        ));
+                        echo $this->element('/genericElements/SideMenu/side_menu_link', array(
+                            'text' => __('Execute Sharing Group Blueprint'),
+                            'onClick' => array(
+                                'function' => 'openGenericModal',
+                                'params' => array($baseurl . '/sharing_group_blueprints/execute/' . h($id))
+                            ),
+                        ));
+                    }
                     echo $this->element('/genericElements/SideMenu/side_menu_link', array(
                         'element_id' => 'indexSG',
                         'url' => $baseurl . '/sharing_groups/index',
@@ -682,6 +708,16 @@ $divider = $this->element('/genericElements/SideMenu/side_menu_divider');
                             'element_id' => 'addSG',
                             'url' => $baseurl . '/sharing_groups/add',
                             'text' => __('Add Sharing Group')
+                        ));
+                        echo $this->element('/genericElements/SideMenu/side_menu_link', array(
+                            'element_id' => 'indexMG',
+                            'url' => $baseurl . '/sharing_group_blueprints/index',
+                            'text' => __('List Sharing Group Blueprints')
+                        ));
+                        echo $this->element('/genericElements/SideMenu/side_menu_link', array(
+                            'element_id' => 'addMG',
+                            'url' => $baseurl . '/sharing_group_blueprints/add',
+                            'text' => __('Add Sharing Group Blueprint')
                         ));
                     }
                     echo $divider;
