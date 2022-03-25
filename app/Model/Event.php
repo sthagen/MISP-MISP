@@ -17,6 +17,7 @@ App::uses('ProcessTool', 'Tools');
  * @property ThreatLevel $ThreatLevel
  * @property Sighting $Sighting
  * @property Organisation $Org
+ * @property CryptographicKey $CryptographicKey
  */
 class Event extends AppModel
 {
@@ -4430,6 +4431,7 @@ class Event extends AppModel
         $servers = $this->Server->find('all', [
             'conditions' => $conditions,
             'recursive' => -1,
+            'contain' => ['RemoteOrg', 'Organisation'],
             'order' => ['Server.priority ASC', 'Server.id ASC'],
         ]);
         // iterate over the servers and upload the event
