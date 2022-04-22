@@ -94,8 +94,6 @@ class Event extends AppModel
 
     public $shortDist = array(0 => 'Organisation', 1 => 'Community', 2 => 'Connected', 3 => 'All', 4 => ' sharing Group');
 
-    public $export_types = [];
-
     public $validFormats = array(
         'attack' => array('html', 'AttackExport', 'html'),
         'attack-sightings' => array('json', 'AttackSightingsExport', 'json'),
@@ -300,118 +298,6 @@ class Event extends AppModel
             'dependent' => true
         ]
     );
-
-    public function __construct($id = false, $table = null, $ds = null)
-    {
-        parent::__construct($id, $table, $ds);
-
-        $this->export_types = array(
-            'json' => array(
-                    'extension' => '.json',
-                    'type' => 'JSON',
-                    'scope' => 'Event',
-                    'requiresPublished' => 0,
-                    'params' => array('includeAttachments' => 1, 'ignore' => 1, 'returnFormat' => 'json'),
-                    'description' => __('Click this to download all events and attributes that you have access to in MISP JSON format.'),
-            ),
-            'xml' => array(
-                    'extension' => '.xml',
-                    'type' => 'XML',
-                    'scope' => 'Event',
-                    'params' => array('includeAttachments' => 1, 'ignore' => 1, 'returnFormat' => 'xml'),
-                    'requiresPublished' => 0,
-                    'description' => __('Click this to download all events and attributes that you have access to in MISP XML format.'),
-            ),
-            'csv_sig' => array(
-                    'extension' => '.csv',
-                    'type' => 'CSV_Sig',
-                    'scope' => 'Event',
-                    'requiresPublished' => 1,
-                    'params' => array('published' => 1, 'to_ids' => 1, 'returnFormat' => 'csv'),
-                    'description' => __('Click this to download all attributes that are indicators and that you have access to (except file attachments) in CSV format.'),
-            ),
-            'csv_all' => array(
-                    'extension' => '.csv',
-                    'type' => 'CSV_All',
-                    'scope' => 'Event',
-                    'requiresPublished' => 0,
-                    'params' => array('ignore' => 1, 'returnFormat' => 'csv'),
-                    'description' => __('Click this to download all attributes that you have access to (except file attachments) in CSV format.'),
-            ),
-            'suricata' => array(
-                    'extension' => '.rules',
-                    'type' => 'Suricata',
-                    'scope' => 'Attribute',
-                    'requiresPublished' => 1,
-                    'params' => array('returnFormat' => 'suricata'),
-                    'description' => __('Click this to download all network related attributes that you have access to under the Suricata rule format. Only published events and attributes marked as IDS Signature are exported. Administration is able to maintain a allowedlist containing host, domain name and IP numbers to exclude from the NIDS export.'),
-            ),
-            'snort' => array(
-                    'extension' => '.rules',
-                    'type' => 'Snort',
-                    'scope' => 'Attribute',
-                    'requiresPublished' => 1,
-                    'params' => array('returnFormat' => 'snort'),
-                    'description' => __('Click this to download all network related attributes that you have access to under the Snort rule format. Only published events and attributes marked as IDS Signature are exported. Administration is able to maintain a allowedlist containing host, domain name and IP numbers to exclude from the NIDS export.'),
-            ),
-            'bro' => array(
-                    'extension' => '.intel',
-                    'type' => 'Bro',
-                    'scope' => 'Attribute',
-                    'requiresPublished' => 1,
-                    'params' => array('returnFormat' => 'bro'),
-                    'description' => __('Click this to download all network related attributes that you have access to under the Bro rule format. Only published events and attributes marked as IDS Signature are exported. Administration is able to maintain a allowedlist containing host, domain name and IP numbers to exclude from the NIDS export.'),
-            ),
-            'stix' => array(
-                    'extension' => '.xml',
-                    'type' => 'STIX',
-                    'scope' => 'Event',
-                    'requiresPublished' => 1,
-                    'params' => array('returnFormat' => 'stix', 'includeAttachments' => 1),
-                    'description' => __('Click this to download a STIX document containing the STIX version of all events and attributes that you have access to.')
-            ),
-            'stix2' => array(
-                    'extension' => '.json',
-                    'type' => 'STIX2',
-                    'scope' => 'Event',
-                    'requiresPublished' => 1,
-                    'params' => array('returnFormat' => 'stix2', 'includeAttachments' => 1),
-                    'description' => __('Click this to download a STIX2 document containing the STIX2 version of all events and attributes that you have access to.')
-            ),
-            'rpz' => array(
-                    'extension' => '.txt',
-                    'type' => 'RPZ',
-                    'scope' => 'Attribute',
-                    'requiresPublished' => 1,
-                    'params' => array('returnFormat' => 'rpz'),
-                    'description' => __('Click this to download an RPZ Zone file generated from all ip-src/ip-dst, hostname, domain attributes. This can be useful for DNS level firewalling. Only published events and attributes marked as IDS Signature are exported.')
-            ),
-            'text' => array(
-                    'extension' => '.txt',
-                    'type' => 'TEXT',
-                    'scope' => 'Attribute',
-                    'requiresPublished' => 1,
-                    'params' => array('returnFormat' => 'text', 'includeAttachments' => 1),
-                    'description' => __('Click on one of the buttons below to download all the attributes with the matching type. This list can be used to feed forensic software when searching for susipicious files. Only published events and attributes marked as IDS Signature are exported.')
-            ),
-            'yara' => array(
-                    'extension' => '.yara',
-                    'type' => 'Yara',
-                    'scope' => 'Event',
-                    'requiresPublished' => 1,
-                    'params' => array('returnFormat' => 'yara'),
-                    'description' => __('Click this to download Yara rules generated from all relevant attributes.')
-            ),
-            'yara-json' => array(
-                    'extension' => '.json',
-                    'type' => 'Yara',
-                    'scope' => 'Event',
-                    'requiresPublished' => 1,
-                    'params' => array('returnFormat' => 'yara-json'),
-                    'description' => __('Click this to download Yara rules generated from all relevant attributes. Rules are returned in a JSON format with information about origin (generated or parsed) and validity.')
-            ),
-        );
-    }
 
     private $assetCache = [];
 
@@ -1579,7 +1465,8 @@ class Event extends AppModel
                     'org' => array('function' => 'set_filter_org', 'pop' => true),
                     'uuid' => array('function' => 'set_filter_uuid', 'pop' => true),
                     'published' => array('function' => 'set_filter_published', 'pop' => true),
-                    'threat_level_id' => array('function' => 'set_filter_threat_level_id', 'pop' => true)
+                    'threat_level_id' => array('function' => 'set_filter_threat_level_id', 'pop' => true),
+                    'sharinggroup' => array('function' => 'set_filter_sharing_group')
                 ),
                 'Object' => array(
                     'object_name' => array('function' => 'set_filter_object_name'),
@@ -1596,7 +1483,8 @@ class Event extends AppModel
                     'ignore' => array('function' => 'set_filter_ignore'),
                     'deleted' => array('function' => 'set_filter_deleted'),
                     'to_ids' => array('function' => 'set_filter_to_ids'),
-                    'comment' => array('function' => 'set_filter_comment')
+                    'comment' => array('function' => 'set_filter_comment'),
+                    'sharinggroup' => array('function' => 'set_filter_sharing_group')
                 )
             );
             foreach ($params as $param => $paramData) {
@@ -2667,6 +2555,19 @@ class Event extends AppModel
         return $container;
     }
 
+    public function set_filter_sharing_group(&$params, $conditions, $options)
+    {
+        if (!empty($params['sharinggroup'])) {
+            $params['sharinggroup'] = $this->convert_filters($params['sharinggroup']);
+            if ($options['scope'] === 'Attribute') {
+                $conditions = $this->generic_add_filter($conditions, $params['sharinggroup'], ['Event.sharing_group_id', 'Attribute.sharing_group_id']);
+            } else {
+                $conditions = $this->generic_add_filter($conditions, $params['sharinggroup'], 'Event.sharing_group_id');
+            }
+        }
+        return $conditions;
+    }
+
     public function set_filter_org(&$params, $conditions, $options)
     {
         if (!empty($params['org'])) {
@@ -2932,30 +2833,21 @@ class Event extends AppModel
 
     public function set_filter_value(&$params, $conditions, $options, $keys = array('Attribute.value1', 'Attribute.value2'))
     {
-        if (!is_array($params['value'])) {
-            $params['value'] = [$params['value']];
-        }
-        $allConditions = [];
-        foreach($params['value'] as $value) {
-            if (!empty($value)) {
-                $valueParts = explode('|', $value, 2);
-                $params[$options['filter']] = $this->convert_filters($params[$options['filter']]);
-                $conditions = $this->generic_add_filter($conditions, $params[$options['filter']], $keys);
-                // Allows searching for ['value1' => [full, part1], 'value2' => [full, part2]]
-                if (count($valueParts) == 2) {
-                    $convertedFilterVal1 = $this->convert_filters($valueParts[0]);
-                    $convertedFilterVal2 = $this->convert_filters($valueParts[1]);
-                    $conditionVal1 = $this->generic_add_filter([], $convertedFilterVal1, ['Attribute.value1'])['AND'][0]['OR'];
-                    $conditionVal2 = $this->generic_add_filter([], $convertedFilterVal2, ['Attribute.value2'])['AND'][0]['OR'];
-                    $tmpConditions = [
-                        'AND' => [$conditionVal1, $conditionVal2]
-                    ];
-                    $conditions['AND'][0]['OR']['OR']['AND'] = [$conditionVal1, $conditionVal2];
-                }
+        if (!empty($params['value'])) {
+            $valueParts = explode('|', $params['value'], 2);
+            $params[$options['filter']] = $this->convert_filters($params[$options['filter']]);
+            $conditions = $this->generic_add_filter($conditions, $params[$options['filter']], $keys);
+            // Allows searching for ['value1' => [full, part1], 'value2' => [full, part2]]
+            if (count($valueParts) == 2) {
+                $convertedFilterVal1 = $this->convert_filters($valueParts[0]);
+                $convertedFilterVal2 = $this->convert_filters($valueParts[1]);
+                $conditionVal1 = $this->generic_add_filter([], $convertedFilterVal1, ['Attribute.value1'])['AND'][0]['OR'];
+                $conditionVal2 = $this->generic_add_filter([], $convertedFilterVal2, ['Attribute.value2'])['AND'][0]['OR'];
+                $conditions['AND'][0]['OR']['OR']['AND'] = [$conditionVal1, $conditionVal2];
             }
-            $allConditions['OR'][] = $conditions;
         }
-        return $allConditions;
+
+        return $conditions;
     }
 
     public function set_filter_object_name(&$params, $conditions, $options)
@@ -5581,7 +5473,7 @@ class Event extends AppModel
                         }
                         $this->Warninglist = ClassRegistry::init('Warninglist');
                         $complexTypeTool->setTLDs($this->Warninglist->fetchTLDLists());
-                        $freetextResults = array_merge($freetextResults, $complexTypeTool->checkComplexRouter($value, 'FreeText'));
+                        $freetextResults = array_merge($freetextResults, $complexTypeTool->checkFreeText($value));
                         if (!empty($freetextResults)) {
                             foreach ($freetextResults as &$ft) {
                                 $temp = array();
@@ -6772,7 +6664,7 @@ class Event extends AppModel
         return $attribute_save;
     }
 
-    public function processFreeTextDataRouter($user, $attributes, $id, $default_comment = '', $proposals = false, $adhereToWarninglists = false, $returnRawResults = false)
+    public function processFreeTextDataRouter(array $user, array $attributes, $id, $default_comment = '', $proposals = false, $adhereToWarninglists = false, $returnRawResults = false)
     {
         if (Configure::read('MISP.background_jobs') && count($attributes) > 5) { // on background process just big attributes batch
             /** @var Job $job */
@@ -7587,5 +7479,119 @@ class Event extends AppModel
         }
         $banStatus['message'] = __('Emailing republishing ban setting is not enabled');
         return $banStatus;
+    }
+
+    /**
+     * @return array[]
+     * @deprecated
+     */
+    public function exportTypes()
+    {
+        return array(
+            'json' => array(
+                'extension' => '.json',
+                'type' => 'JSON',
+                'scope' => 'Event',
+                'requiresPublished' => 0,
+                'params' => array('includeAttachments' => 1, 'ignore' => 1, 'returnFormat' => 'json'),
+                'description' => __('Click this to download all events and attributes that you have access to in MISP JSON format.'),
+            ),
+            'xml' => array(
+                'extension' => '.xml',
+                'type' => 'XML',
+                'scope' => 'Event',
+                'params' => array('includeAttachments' => 1, 'ignore' => 1, 'returnFormat' => 'xml'),
+                'requiresPublished' => 0,
+                'description' => __('Click this to download all events and attributes that you have access to in MISP XML format.'),
+            ),
+            'csv_sig' => array(
+                'extension' => '.csv',
+                'type' => 'CSV_Sig',
+                'scope' => 'Event',
+                'requiresPublished' => 1,
+                'params' => array('published' => 1, 'to_ids' => 1, 'returnFormat' => 'csv'),
+                'description' => __('Click this to download all attributes that are indicators and that you have access to (except file attachments) in CSV format.'),
+            ),
+            'csv_all' => array(
+                'extension' => '.csv',
+                'type' => 'CSV_All',
+                'scope' => 'Event',
+                'requiresPublished' => 0,
+                'params' => array('ignore' => 1, 'returnFormat' => 'csv'),
+                'description' => __('Click this to download all attributes that you have access to (except file attachments) in CSV format.'),
+            ),
+            'suricata' => array(
+                'extension' => '.rules',
+                'type' => 'Suricata',
+                'scope' => 'Attribute',
+                'requiresPublished' => 1,
+                'params' => array('returnFormat' => 'suricata'),
+                'description' => __('Click this to download all network related attributes that you have access to under the Suricata rule format. Only published events and attributes marked as IDS Signature are exported. Administration is able to maintain a allowedlist containing host, domain name and IP numbers to exclude from the NIDS export.'),
+            ),
+            'snort' => array(
+                'extension' => '.rules',
+                'type' => 'Snort',
+                'scope' => 'Attribute',
+                'requiresPublished' => 1,
+                'params' => array('returnFormat' => 'snort'),
+                'description' => __('Click this to download all network related attributes that you have access to under the Snort rule format. Only published events and attributes marked as IDS Signature are exported. Administration is able to maintain a allowedlist containing host, domain name and IP numbers to exclude from the NIDS export.'),
+            ),
+            'bro' => array(
+                'extension' => '.intel',
+                'type' => 'Bro',
+                'scope' => 'Attribute',
+                'requiresPublished' => 1,
+                'params' => array('returnFormat' => 'bro'),
+                'description' => __('Click this to download all network related attributes that you have access to under the Bro rule format. Only published events and attributes marked as IDS Signature are exported. Administration is able to maintain a allowedlist containing host, domain name and IP numbers to exclude from the NIDS export.'),
+            ),
+            'stix' => array(
+                'extension' => '.xml',
+                'type' => 'STIX',
+                'scope' => 'Event',
+                'requiresPublished' => 1,
+                'params' => array('returnFormat' => 'stix', 'includeAttachments' => 1),
+                'description' => __('Click this to download a STIX document containing the STIX version of all events and attributes that you have access to.')
+            ),
+            'stix2' => array(
+                'extension' => '.json',
+                'type' => 'STIX2',
+                'scope' => 'Event',
+                'requiresPublished' => 1,
+                'params' => array('returnFormat' => 'stix2', 'includeAttachments' => 1),
+                'description' => __('Click this to download a STIX2 document containing the STIX2 version of all events and attributes that you have access to.')
+            ),
+            'rpz' => array(
+                'extension' => '.txt',
+                'type' => 'RPZ',
+                'scope' => 'Attribute',
+                'requiresPublished' => 1,
+                'params' => array('returnFormat' => 'rpz'),
+                'description' => __('Click this to download an RPZ Zone file generated from all ip-src/ip-dst, hostname, domain attributes. This can be useful for DNS level firewalling. Only published events and attributes marked as IDS Signature are exported.')
+            ),
+            'text' => array(
+                'extension' => '.txt',
+                'type' => 'TEXT',
+                'scope' => 'Attribute',
+                'requiresPublished' => 1,
+                'params' => array('returnFormat' => 'text', 'includeAttachments' => 1),
+                'description' => __('Click on one of the buttons below to download all the attributes with the matching type. This list can be used to feed forensic software when searching for susipicious files. Only published events and attributes marked as IDS Signature are exported.')
+            ),
+            'yara' => array(
+                'extension' => '.yara',
+                'type' => 'Yara',
+                'scope' => 'Event',
+                'requiresPublished' => 1,
+                'params' => array('returnFormat' => 'yara'),
+                'description' => __('Click this to download Yara rules generated from all relevant attributes.')
+            ),
+            'yara-json' => array(
+                'extension' => '.json',
+                'type' => 'Yara',
+                'scope' => 'Event',
+                'requiresPublished' => 1,
+                'params' => array('returnFormat' => 'yara-json'),
+                'description' => __('Click this to download Yara rules generated from all relevant attributes. Rules are returned in a JSON format with information about origin (generated or parsed) and validity.')
+            ),
+        );
     }
 }
