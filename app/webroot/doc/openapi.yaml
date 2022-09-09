@@ -4524,7 +4524,7 @@ components:
       properties:
         input:
           type: string
-          example: "cd $(git rev-parse --show-toplevel) && git checkout app\/composer.json 2>&1"
+          example: "cd $(git rev-parse --show-toplevel) && git checkout app/composer.json 2>&1"
         output:
           type: array
           items:
@@ -6197,6 +6197,8 @@ components:
                   - $ref: "#/components/schemas/OrganisationId"
                   - $ref: "#/components/schemas/OrganisationName"
               tags:
+                $ref: "#/components/schemas/TagsRestSearchFilter"
+              event_tags:
                 $ref: "#/components/schemas/TagsRestSearchFilter"
               searchall:
                 description: "Search events by matching any tag names, event descriptions, attribute values or attribute comments"
