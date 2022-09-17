@@ -1665,6 +1665,16 @@ class User extends AppModel
         $periodic_settings = array_values(array_filter($user['UserSetting'], function ($userSetting) {
             return $userSetting['setting'] == self::PERIODIC_USER_SETTING_KEY;
         }));
+        if (empty($periodic_settings)) {
+            $periodic_settings = [['value' => [
+                'orgc_id' => '',
+                'distribution' => -1,
+                'sharing_group_id' => '',
+                'event_info' => '',
+                'tags' => '[]',
+                'trending_for_tags' => '[]'
+            ]]];
+        }
         $periodic_settings_indexed = [];
         if (!empty($periodic_settings)) {
             foreach ($filter_names as $filter_name) {
@@ -1787,9 +1797,10 @@ class User extends AppModel
 
         $rollingWindows = 2;
         $trendAnalysis = $this->Event->getTrendsForTagsFromEvents($events, $this->__periodToDays($period), $rollingWindows, $periodicSettings['trending_for_tags']);
+        $tagFilterPrefixes = $periodicSettings['trending_for_tags'] ?: array_keys($trendAnalysis['all_tags']);
         $trendData = [
             'trendAnalysis' => $trendAnalysis,
-            'tagFilterPrefixes' => $periodicSettings['trending_for_tags'],
+            'tagFilterPrefixes' => $tagFilterPrefixes,
         ];
         $trending_summary = $this->__renderTrendingSummary($trendData);
 
@@ -1836,7 +1847,7 @@ class User extends AppModel
         $filters = [
             'last' => $this->__genTimerangeFilter($period),
             'published' => true,
-            'includeBaseScoresOnEvent' => true,
+            'includeScoresOnEvent' => true,
         ];
         if (!empty($period_filters['orgc_id'])) {
             $filters['orgc_id'] = $period_filters['orgc_id'];

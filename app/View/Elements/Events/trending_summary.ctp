@@ -6,6 +6,7 @@ $allTimestamps = $trendAnalysis['all_timestamps'];
 $currentPeriod = $allTimestamps[0];
 $previousPeriod = $allTimestamps[1];
 $previousPeriod2 = $allTimestamps[2];
+$periods = [$previousPeriod2, $previousPeriod, $currentPeriod];
 
 $allUniqueTagsPerPeriod = array_map(function ($tags) {
     return array_keys($tags);
@@ -36,13 +37,19 @@ $colorForTags = [];
 $chartData = [];
 $maxValue = 0;
 foreach ($allUniqueTags as $i => $tag) {
-    $colorForTags[$tag] = $COLOR_PALETTE[$i];
-    $chartData[$tag] = [
-        $clusteredTags[$previousPeriod2][$tag]['occurence'] ?? 0,
-        $clusteredTags[$previousPeriod][$tag]['occurence'] ?? 0,
-        $clusteredTags[$currentPeriod][$tag]['occurence'] ?? 0,
-    ];
-    $maxValue = max($maxValue, max($chartData[$tag]));
+    if (
+        !empty($clusteredTags[$previousPeriod2][$tag]['occurence']) ||
+        !empty($clusteredTags[$previousPeriod][$tag]['occurence']) ||
+        !empty($clusteredTags[$currentPeriod][$tag]['occurence'])
+    ) {
+        $colorForTags[$tag] = $COLOR_PALETTE[$i];
+        $chartData[$tag] = [
+            $clusteredTags[$previousPeriod2][$tag]['occurence'] ?? 0,
+            $clusteredTags[$previousPeriod][$tag]['occurence'] ?? 0,
+            $clusteredTags[$currentPeriod][$tag]['occurence'] ?? 0,
+        ];
+        $maxValue = max($maxValue, max($chartData[$tag]));
+    }
 }
 $canvasWidth = 600;
 $canvasHeight = 150;
@@ -117,7 +124,7 @@ if (!function_exists('computeLinePositions')) {
                 <div class="y-axis-container">
                     <div>
                         <span class="y-axis-label" style="<?= sprintf('left: %spx; top: %spx; transform: translate(-100%%, %s%%)', 0, 0, -25) ?>"><?= h($maxValue) ?></span>
-                        <span class="y-axis-label" style="<?= sprintf('left: %spx; top: %spx; transform: translate(-100%%, %s%%)', 0, ($canvasHeight - 20)/2, 0) ?>"><?= h(round($maxValue / 2, 2)) ?></span>
+                        <span class="y-axis-label" style="<?= sprintf('left: %spx; top: %spx; transform: translate(-100%%, %s%%)', 0, ($canvasHeight - 20) / 2, 0) ?>"><?= h(round($maxValue / 2, 2)) ?></span>
                         <span class="y-axis-label" style="<?= sprintf('left: %spx; top: %spx; transform: translate(-100%%, %s%%)', 0, ($canvasHeight - 20), 25) ?>"><?= 0 ?></span>
                     </div>
                 </div>
@@ -159,7 +166,7 @@ if (!function_exists('computeLinePositions')) {
 </div>
 
 <?php if (!empty($allTags)) : ?>
-    <table class="table table-condensed no-border">
+    <table class="table table-condensed no-border trending-table">
         <thead>
             <tr>
                 <th></th>
@@ -168,11 +175,11 @@ if (!function_exists('computeLinePositions')) {
                         <div><?= __('Period-2') ?></div>
                         <div style="font-weight: normal;"><?= __('%s events', h($clusteredEvents[$previousPeriod2])) ?></div>
                     </span>
-                    <table>
+                    <table class="trending-table-data">
                         <thead style="font-size: small;">
                             <tr>
-                                <td style="min-width: 20px;">#</td>
-                                <td style="min-width: 15px;">⥮</td>
+                                <td>#</td>
+                                <td>⥮</td>
                                 <td>%</td>
                                 <td></td>
                             </tr>
@@ -184,11 +191,11 @@ if (!function_exists('computeLinePositions')) {
                         <div><?= __('Previous period') ?></div>
                         <div style="font-weight: normal;"><?= __('%s events', h($clusteredEvents[$previousPeriod])) ?></div>
                     </span>
-                    <table>
+                    <table class="trending-table-data">
                         <thead style="font-size: small;">
                             <tr>
-                                <td style="min-width: 20px;">#</td>
-                                <td style="min-width: 15px;">⥮</td>
+                                <td>#</td>
+                                <td>⥮</td>
                                 <td>%</td>
                                 <td></td>
                             </tr>
@@ -200,11 +207,11 @@ if (!function_exists('computeLinePositions')) {
                         <div><?= __('Starting period') ?></div>
                         <div style="font-weight: normal;"><?= __('%s events', h($clusteredEvents[$currentPeriod])) ?></div>
                     </span>
-                    <table>
+                    <table class="trending-table-data">
                         <thead style="font-size: small;">
                             <tr>
-                                <td style="min-width: 20px;">#</td>
-                                <td style="min-width: 15px;">⥮</td>
+                                <td>#</td>
+                                <td>⥮</td>
                                 <td>%</td>
                                 <td></td>
                             </tr>
@@ -232,7 +239,7 @@ if (!function_exists('computeLinePositions')) {
                             <code><?= h(reduceTag($tagName, count(explode(':', $tagPrefix)))) ?></code>
                         </td>
                         <td>
-                            <table class="table-condensed no-border">
+                            <table class="table-condensed no-border trending-table-data">
                                 <tbody>
                                     <tr>
                                         <td><?= h($clusteredTags[$previousPeriod2][$tagName]['occurence'] ?? '-') ?></td>
@@ -244,7 +251,7 @@ if (!function_exists('computeLinePositions')) {
                             </table>
                         </td>
                         <td>
-                            <table class="table-condensed no-border">
+                            <table class="table-condensed no-border trending-table-data">
                                 <tbody>
                                     <tr>
                                         <td><?= h($clusteredTags[$previousPeriod][$tagName]['occurence'] ?? '-') ?></td>
@@ -256,7 +263,7 @@ if (!function_exists('computeLinePositions')) {
                             </table>
                         </td>
                         <td>
-                            <table class="table-condensed no-border">
+                            <table class="table-condensed no-border trending-table-data">
                                 <tbody>
                                     <tr>
                                         <td><?= h($clusteredTags[$currentPeriod][$tagName]['occurence'] ?? '-') ?></td>
@@ -268,6 +275,24 @@ if (!function_exists('computeLinePositions')) {
                             </table>
                         </td>
                     </tr>
+                    <td style="padding: 0;"></td>
+                    <td colspan="3" style="padding: 0;">
+                        <?php
+                            $low = '#fee8c8';
+                            $medium = '#f09c8f';
+                            $high = '#bc2f1a';
+                            $periodColorRatio = $clusteredTags[$currentPeriod][$tagName]['occurence'] / $maxValue;
+                            $colorGradient = [];
+                            foreach ($periods as $i => $period) {
+                                $ratio = ($clusteredTags[$period][$tagName]['occurence'] ?? 0) / $maxValue;
+                                $color = $ratio <= 0.33 ? $low : ($ratio >= 0.66 ? $high : $medium);
+                                $length = 100 * $i / (count($periods) - 1);
+                                $colorGradient[] = sprintf('%s %s%%', $color, $length);
+                            }
+                        ?>
+
+                        <div class="heatbar" style="background: <?= sprintf('linear-gradient(90deg, %s);', implode(', ', $colorGradient)) ?>;"></div>
+                    </td>
                 <?php endforeach; ?>
             </tbody>
         <?php endforeach; ?>
@@ -275,6 +300,25 @@ if (!function_exists('computeLinePositions')) {
 <?php endif; ?>
 
 <style>
+    table.trending-table table.trending-table-data {
+        width: 150px;
+    }
+    table.trending-table th:not(:first-child) {
+        width: 150px;
+    }
+
+    table.trending-table table.trending-table-data thead td:first-child,
+    table.trending-table table.trending-table-data tbody td:first-child {
+        box-sizing: border-box;
+        width: 35px;
+    }
+
+    table.trending-table table.trending-table-data thead td:nth-child(2),
+    table.trending-table table.trending-table-data tbody td:nth-child(2) {
+        box-sizing: border-box;
+        width: 35px;
+    }
+
     .dot {
         position: absolute;
         height: 7px;
@@ -287,7 +331,7 @@ if (!function_exists('computeLinePositions')) {
         background: blue;
         height: 3px;
         transform-origin: left center;
-        box-shadow: 1px 1px 2px 0px #00000066;
+        box-shadow: 1px 1px 3px 0px #00000033;
     }
 
     .chart-container {
@@ -310,6 +354,7 @@ if (!function_exists('computeLinePositions')) {
     }
 
     .x-axis-label {
+        font-size: 12px;
         position: absolute;
         white-space: nowrap;
         translate: -50%;
@@ -332,7 +377,7 @@ if (!function_exists('computeLinePositions')) {
     .y-axis-label {
         position: absolute;
         white-space: nowrap;
-        /* transform: translate(-100%, 0%); */
+        font-size: 12px;
         padding: 0 5px;
     }
 
@@ -341,5 +386,10 @@ if (!function_exists('computeLinePositions')) {
         width: 10px;
         height: 10px;
         border: 1px solid #000;
+    }
+
+    .heatbar {
+        height: 3px; 
+        width: calc(100% - 10px); 
     }
 </style>

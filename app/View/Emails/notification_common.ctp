@@ -20,6 +20,7 @@ if (empty($this->__vars)) {
 }
 $default_vars = [
     'event_table_include_basescore' => true,
+    'event_table_max_event_count' => 30,
     'additional_taxonomy_event_list' => [
         'PAP' => 'PAP:'
     ],
@@ -44,6 +45,9 @@ $tag_color_mapping = [];
 
 $mitre_attack_techniques = [];
 $mitre_galaxy_tag_prefix = 'misp-galaxy:mitre-attack-pattern="';
+
+$reportLink = sprintf('%s/users/viewPeriodicSummary/%s', $baseurl, $period);
+$eventLink = sprintf('%s/events/index/searchpublished:1/searchPublishTimestamp:%s/searchPublishTimestamp:%s', $baseurl, h($start_date->format('Y-m-d H:i:s')), h($now->format('Y-m-d H:i:s')));
 
 foreach ($events as $event) {
     $unique_tag_per_event = [];
@@ -162,10 +166,12 @@ $unique_tag_number = count(array_keys($all_tag_amount));
 arsort($attribute_types);
 arsort($object_types);
 arsort($all_tag_amount);
+arsort($mitre_attack_techniques);
 
 array_splice($attribute_types, 10);
 array_splice($object_types, 10);
 array_splice($all_tag_amount, 10);
+array_splice($mitre_attack_techniques, 10);
 ?>
 
 <?php if ($this->fetch('prepend-html')) : ?>
@@ -230,6 +236,7 @@ array_splice($all_tag_amount, 10);
                     </tr>
                 </tbody>
             </table>
+            ⮞ <a href="<?= h($reportLink) ?>"><?= __('View this report in MISP') ?></a>
         </div>
     </div>
 <?php endif; ?>
@@ -246,10 +253,13 @@ array_splice($all_tag_amount, 10);
                 <?= $this->fetch('detailed-summary-mitre-attack'); ?>
             <?php else : ?>
                 <?php if (!empty($mitre_attack_techniques)) : ?>
-                    <h4><?= __('Mitre Att&ck techniques') ?></h4>
+                    <h4><?= __('Top 10 Mitre Att&ck techniques') ?></h4>
                     <ul>
                         <?php foreach ($mitre_attack_techniques as $technique => $tag) : ?>
                             <li>
+                                <span class="tag" style="background-color: #999; color: #fff; border-radius: 9px; padding: 2px 8px;">
+                                    <?= $all_tag_amount[$tag['Tag']['name']] ?>
+                                </span>
                                 <?php
                                 $tag['Tag']['name'] = $technique;
                                 echo $this->element('tag', ['tag' => $tag])
@@ -302,7 +312,7 @@ array_splice($all_tag_amount, 10);
                 <ul>
                     <?php foreach ($all_tag_amount as $tag_name => $amount) : ?>
                         <li>
-                            <span style="padding: 2px 9px; margin-right: 5px; border-radius: 9px; font-weight: bold; background-color: #999; color: #fff;">
+                            <span class="tag" style="background-color: #999; color: #fff; border-radius: 9px; padding: 2px 8px;">
                                 <?= $amount ?>
                             </span>
                             <?= $this->element('tag', ['tag' => ['Tag' => ['name' => $tag_name, 'colour' => $tag_color_mapping[$tag_name]]]]) ?>
@@ -315,7 +325,7 @@ array_splice($all_tag_amount, 10);
                 <?= $this->fetch('detailed-summary-events'); ?>
             <?php else : ?>
                 <?php if (!empty($events)) : ?>
-                    <h4><?= __('Event list') ?></h4>
+                    <h4><?= __('Event list') ?> <small style="color: #999999;"><?= sprintf(' (%s)', count($events)) ?></small></h4>
                     <table class="table table-condensed">
                         <thead>
                             <tr>
@@ -328,14 +338,17 @@ array_splice($all_tag_amount, 10);
                                     <th><?= h($taxonomy_name) ?></th>
                                 <?php endforeach; ?>
                                 <?php if (!empty($vars['event_table_include_basescore'])) : ?>
-                                    <th><?= __('Decaying Base Score') ?></th>
+                                    <th><?= __('Decaying Event Score') ?></th>
                                 <?php endif; ?>
                                 <th><?= __('Event Info') ?></th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach ($events as $event) : ?>
+                            <?php foreach ($events as $i => $event) : ?>
                                 <?php
+                                if ($i > $vars['event_table_max_event_count']-1) {
+                                    break;
+                                }
                                 $workflowTag = findAndBuildTag($event['EventTag'], 'workflow:', $this);
                                 $analysisHtml = !empty($workflowTag) ? $workflowTag : '';
                                 $tlpTag = findAndBuildTag($event['EventTag'], 'tlp:', $this);
@@ -358,12 +371,12 @@ array_splice($all_tag_amount, 10);
                                     <?php endforeach; ?>
                                     <?php if (!empty($vars['event_table_include_basescore'])) : ?>
                                         <td>
-                                            <?php if (isset($event['event_base_score'])) : ?>
+                                            <?php if (isset($event['event_scores'])) : ?>
                                                 <table class="table-xcondensed no-border">
-                                                    <?php foreach ($event['event_base_score'] as $bs) : ?>
+                                                    <?php foreach ($event['event_scores'] as $score) : ?>
                                                         <tr>
-                                                            <td style="line-height: 14px;"><i class="no-overflow" style="max-width: 12em;" title="<?= h($bs['DecayingModel']['name']); ?>"><?= h($bs['DecayingModel']['name']); ?>:</i></td>
-                                                            <td style="line-height: 14px;"><b style="color: <?= !empty($bs['decayed']) ? '#b94a48' : '#468847' ?>;"><?= round($bs['base_score'], 2) ?></b></td>
+                                                            <td style="line-height: 14px;"><i class="no-overflow" style="max-width: 12em;" title="<?= h($score['DecayingModel']['name']); ?>"><?= h($score['DecayingModel']['name']); ?>:</i></td>
+                                                            <td style="line-height: 14px;"><b style="color: <?= !empty($score['decayed']) ? '#b94a48' : '#468847' ?>;"><?= round($score['score'], 2) ?></b></td>
                                                         </tr>
                                                     <?php endforeach; ?>
                                                 </table>
@@ -379,6 +392,17 @@ array_splice($all_tag_amount, 10);
                     </table>
                 <?php else : ?>
                     <p><?= __('No events.') ?></p>
+                <?php endif; ?>
+                <?php if (count($events) > $vars['event_table_max_event_count']) : ?>
+                    ⮞ <?=
+                        __n(
+                            '%s event not displayed.',
+                            '%s events not displayed.',
+                            count($events) - $vars['event_table_max_event_count'],
+                            sprintf('<strong>%s</strong>', count($events) - $vars['event_table_max_event_count'])
+                        )
+                    ?>
+                    <a href="<?= h($eventLink) ?>"><?= __('View all events in MISP') ?></a>
                 <?php endif; ?>
             <?php endif; ?>
         </div>
