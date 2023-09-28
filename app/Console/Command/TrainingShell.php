@@ -11,7 +11,7 @@ App::uses('File', 'Utility');
 
 class TrainingShell extends AppShell {
 
-    public $uses = array('User', 'Organisation', 'Server', 'Authkey');
+    public $uses = array('User', 'Organisation', 'Server', 'AuthKey');
 
     private $__currentUrl = false;
     private $__currentAuthKey = false;
@@ -232,6 +232,11 @@ class TrainingShell extends AppShell {
     public function WipeAllOrgs()
     {
         $this->Organisation->deleteAll(['Organisation.name !=' => 'ORGNAME']);
+    }
+
+    public function WipeAllAuthkeys()
+    {
+        $this->AuthKey->deleteAll(['AuthKey.id !=' => 0]);
     }
 
     private function __createOrgFromBlueprint($id)
