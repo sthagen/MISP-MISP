@@ -619,7 +619,7 @@ class Attribute extends AppModel
             return false;
         }
 
-        $attribute = $this->beforeVAlidateMassage($attribute);
+        $attribute = $this->beforeValidateMassage($attribute);
 
         // return true, otherwise the object cannot be saved
         return true;
@@ -2682,7 +2682,7 @@ class Attribute extends AppModel
 
         // run the beforevalidation massage at this point so we can skip validation in round 2
         foreach ($attributes as $k => $attribute) {
-            $attributes[$k] = $this->beforeVAlidateMassage($attribute);
+            $attributes[$k] = $this->beforeValidateMassage($attribute);
         }
 
         // validation only so we can cull the problematic attributes
@@ -2712,7 +2712,7 @@ class Attribute extends AppModel
             }
             $attributeId = $this->updateLookupTable[$attribute['uuid']];
             if (!empty($attribute['Sighting'])) {
-                $this->Sighting->captureSightings($attribute['Sighting'], $this->id, $eventId, $user);
+                $this->Sighting->captureSightings($attribute['Sighting'], $attributeId, $eventId, $user);
             }
             if ($user['Role']['perm_tagger']) {
                 /*
@@ -2781,9 +2781,9 @@ class Attribute extends AppModel
             
         }
         if (!empty($tagActions['detach'])) {
-            $conditions = [];
+            $conditions = ['OR' => []];
             foreach ($tagActions['detach'] as $detach) {
-                $conditions[] = [
+                $conditions['OR'][] = [
                     'AND' => [
                         'attribute_id' => $detach['attribute_id'],
                         'tag_id' => $detach['tag_id']
@@ -2798,7 +2798,7 @@ class Attribute extends AppModel
             // Let's recorrelate the event
             foreach ($attributes as $attribute) {
                 if (!empty($attribute['_materialChange'])) {
-                    $this->Correlation->generateCorrelation(false, $event['Event']['id'], $attribute['id']);
+                    $this->Correlation->generateCorrelation(false, $event['Event']['id'], $attributeId);
                 }
             }
             // Instead of incrementing / decrementing the event 
