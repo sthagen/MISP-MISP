@@ -1069,7 +1069,7 @@ class Server extends AppModel
             $message = __('Push to server %s failed. Reason: %s', $id, $push);
             $this->Log = ClassRegistry::init('Log');
             $this->Log->create();
-            $this->Log->save(array(
+            $this->Log->saveOrFailSilently(array(
                 'org' => $user['Organisation']['name'],
                 'model' => 'Server',
                 'model_id' => $id,
@@ -1233,7 +1233,7 @@ class Server extends AppModel
 
         $this->Log = ClassRegistry::init('Log');
         $this->Log->create();
-        $this->Log->save(array(
+        $this->Log->saveOrFailSilently(array(
             'org' => $user['Organisation']['name'],
             'model' => 'Server',
             'model_id' => $id,
@@ -2366,7 +2366,7 @@ class Server extends AppModel
             if ($beforeResult !== true) {
                 $this->Log = ClassRegistry::init('Log');
                 $this->Log->create();
-                $this->Log->save(array(
+                $this->Log->saveOrFailSilently(array(
                     'org' => $user['Organisation']['name'],
                     'model' => 'Server',
                     'model_id' => 0,
@@ -3898,7 +3898,7 @@ class Server extends AppModel
                 'change' => sprintf(__('Stopping a worker. Worker was of type %s with pid %s'), $queue, $pid)
             )
         );
-        $this->Log->save(array(
+        $this->Log->saveOrFailSilently(array(
             'org' => $user['Organisation']['name'],
             'model' => 'User',
             'model_id' => $user['id'],
@@ -5951,6 +5951,14 @@ class Server extends AppModel
                 'allow_disabling_correlation' => array(
                     'level' => 0,
                     'description' => __('*WARNING* This setting will give event creators the possibility to disable the correlation of individual events / attributes that they have created.'),
+                    'value' => false,
+                    'test' => 'testBoolFalse',
+                    'type' => 'boolean',
+                    'null' => true
+                ),
+                'show_server_correlations_for_all_users' => array(
+                    'level' => 1,
+                    'description' => __('This setting will reveal correlations from other remote servers visible to all users.'),
                     'value' => false,
                     'test' => 'testBoolFalse',
                     'type' => 'boolean',
