@@ -12,7 +12,7 @@ class ComplexTypeTool
         array(
             'from' => '/(\[\.\]|\[dot\]|\(dot\))/',
             'to' => '.',
-            'types' => array('link', 'url', 'ip-dst', 'ip-src', 'domain|ip', 'domain', 'hostname')
+            'types' => array('link', 'url', 'ip-dst', 'ip-src', 'domain|ip', 'domain', 'hostname', 'email', 'email-src', 'email-dst')
         ),
         array(
             'from' => '/\[hxxp:\/\/\]/',
@@ -20,7 +20,7 @@ class ComplexTypeTool
             'types' => array('link', 'url')
         ),
         array(
-            'from' => '/[\@]|\[at\]/',
+            'from' => '/\[\@\]|\[at\]/',
             'to' => '@',
             'types' => array('email', 'email-src', 'email-dst')
         ),
@@ -534,7 +534,7 @@ class ComplexTypeTool
 
     private function __checkForDomainOrFilename(array $input)
     {
-        if (strpos($input['refanged_no_port'], '.') !== false) {
+        if (str_contains($input['refanged_no_port'], '.')) {
             $temp = explode('.', $input['refanged_no_port']);
             $domainDetection = true;
             if (preg_match('/^([-\pL\pN]+\.)+[a-z0-9-]+$/iu', $input['refanged_no_port'])) {
@@ -567,7 +567,7 @@ class ComplexTypeTool
                 }
             }
         }
-        if (strpos($input['raw'], '\\') !== false) {
+        if (str_contains($input['raw'], '\\')) {
             $temp = explode('\\', $input['raw']);
             if (strpos(end($temp), '.') || preg_match('/^.:/i', $temp[0])) {
                 if ($this->__resolveFilename(end($temp))) {
