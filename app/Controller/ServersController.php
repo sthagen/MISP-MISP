@@ -1785,7 +1785,7 @@ class ServersController extends AppController
                         }
                     }
                 }
-                if (!$mismatch && $version[2] < 111) {
+                if (!$mismatch && $version[1] == 4 && $version[2] < 111) {
                     $mismatch = 'proposal';
                 }
                 if (!$perm_sync && !$perm_sighting) {

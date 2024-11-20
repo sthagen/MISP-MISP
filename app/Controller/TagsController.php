@@ -579,6 +579,8 @@ class TagsController extends AppController
             $onClickForm = 'quickSubmitAttributeTagForm';
         } elseif ($scope === 'tag_collection') {
             $onClickForm = 'quickSubmitTagCollectionTagForm';
+        } elseif ($scope === 'event_report') {
+            $onClickForm = 'quickSubmitEventReportTagForm';
         } else {
             $onClickForm = 'quickSubmitTagForm';
         }
@@ -1030,7 +1032,7 @@ class TagsController extends AppController
 
     public function modifyTagRelationship($scope, $id)
     {
-        $validScopes = ['event', 'attribute'];
+        $validScopes = ['event', 'attribute', 'event_report'];
         if (!in_array($scope, $validScopes, true)) {
             throw new InvalidArgumentException(__('Invalid scope. Valid options: %s', implode(', ', $validScopes)));
         }
@@ -1043,7 +1045,12 @@ class TagsController extends AppController
         if (empty($tagConnector)) {
             throw new NotFoundException(__('Tag not found.'));
         }
-        $event = $this->Tag->EventTag->Event->fetchSimpleEvent($this->Auth->user(), $tagConnector[$model_name]['event_id']);
+        if ($scope == 'event_report') {
+            $eventReport = $this->Tag->EventReportTag->EventReport->simpleFetchById($this->Auth->user(), $tagConnector[$model_name]['event_report_id'], true);
+            $event = ['Event' => $eventReport['Event']];
+        } else {
+            $event = $this->Tag->EventTag->Event->fetchSimpleEvent($this->Auth->user(), $tagConnector[$model_name]['event_id']);
+        }
         if (empty($event)) {
             throw new NotFoundException(__('Event not found.'));
         }

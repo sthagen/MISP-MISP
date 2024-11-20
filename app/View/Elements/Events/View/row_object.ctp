@@ -3,7 +3,7 @@
   if ($event['Event']['id'] != $object['event_id']) {
       $objectEvent = $event['extensionEvents'][$object['event_id']];
       $objectEvent = ['Event' => $objectEvent, 'Orgc' => $objectEvent['Orgc']]; // fix format to match standard event format
-      $mayModify = $this->Acl->canMofiyEvent($objectEvent);
+      $mayModify = $this->Acl->canModifyEvent($objectEvent);
   } else {
       $objectEvent = $event;
   }
@@ -66,7 +66,7 @@ $objectId = intval($object['id']);
       ?>
       </td>
   <?php
-    if ($extended):
+    if ($extended || $extending):
   ?>
     <td class="short">
       <?php echo '<a href="' . $baseurl . '/events/view/' . h($object['event_id']) . '" class="white">' . h($object['event_id']) . '</a>'; ?>
@@ -77,7 +77,7 @@ $objectId = intval($object['id']);
   <?php if ($includeOrgColumn): ?>
   <td class="short">
     <?php
-      if ($extended):
+      if ($extended || $extending):
           echo $this->OrgImg->getOrgImg(array('name' => $objectEvent['Orgc']['name'], 'id' => $objectEvent['Orgc']['id'], 'size' => 24));
       endif;
     ?>

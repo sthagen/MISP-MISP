@@ -1260,7 +1260,7 @@ class ObjectsController extends AppController
 
         $event = $this->MispObject->Event->find('first', array(
             'recursive' => -1,
-            'fields' => array('Event.id', 'Event.uuid', 'Event.orgc_id', 'Event.user_id', 'Event.publish_timestamp'),
+            'fields' => array('Event.id', 'Event.uuid', 'Event.orgc_id', 'Event.org_id', 'Event.user_id', 'Event.publish_timestamp', 'Event.distribution', 'Event.sharing_group_id'),
             'conditions' => array('Event.id' => $eventId)
         ));
         if (empty($event)) {

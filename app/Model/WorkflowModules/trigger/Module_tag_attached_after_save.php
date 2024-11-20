@@ -15,6 +15,9 @@ class Module_tag_attached_after_save extends WorkflowBaseTriggerModule
     public $trigger_overhead = self::OVERHEAD_HIGH;
     public $params = [];
 
+    private $Event;
+    private $Attribute;
+
     public function __construct()
     {
         parent::__construct();

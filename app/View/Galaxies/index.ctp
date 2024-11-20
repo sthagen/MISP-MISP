@@ -1,4 +1,30 @@
 <?php
+    $html_description = '';
+    if ($isSiteAdmin) {
+        $notices = [];
+        $severity = '';
+        $hasUnkwownCustomClusters = $unkownClustersDetails['unknownCustomClusters'] > 0;
+        $hasUnkwownDefaultClusters = $unkownClustersDetails['unknownDefaultClusters'] > 0;
+        if ($hasUnkwownCustomClusters) {
+            $severity = 'info';
+            $content = sprintf(' %s', __('Your instance has detected <b style="font-size: larger;">%s</b> <b>custom cluster(s)</b> that it doesn\'t recognize. This may indicate one of two things: either these clusters haven\'t been properly synchronized, or you weren\'t authorized to view them during the synchronization process. In most cases, you can safely ignore this message. However, if you believe you should have access to these clusters, please check your synchronization settings and ask the instances sending data to you to review theirs as well. Sample(s):', $unkownClustersDetails['unknownCustomClusters']));
+            $tagSampleHTML = sprintf('<li>%s</li>', implode('</li><li>', $unkownClustersDetails['unknownCustomClustersSamples']));
+            $content .= $tagSampleHTML;
+            $notices[] = sprintf('<div class="alert alert-%s" style="max-width: 960px;"><b style="font-size: larger;">%s:</b>%s</div>', $severity, __('Info'), $content);
+        }
+        if ($hasUnkwownDefaultClusters) {
+            $severity = 'warning';
+            $content = sprintf(' %s', __('Your instance has detected <b style="font-size: larger;">%s</b> <b>default cluster(s)</b> that it doesn\'t recognize, which may mean your galaxies are outdated. To fix this, update to the latest version from the misp-galaxy repository and load the JSON files into your database by clicking the "Update Galaxies" button. Sample(s):', $unkownClustersDetails['unknownDefaultClusters']));
+            $tagSampleHTML = sprintf('<li>%s</li>', implode('</li><li>', $unkownClustersDetails['unknownDefaultClustersSamples']));
+            $content .= $tagSampleHTML;
+            $notices[] = sprintf('<div class="alert alert-%s" style="max-width: 960px;"><b style="font-size: larger;">%s:</b>%s</div>', $severity, __('Warning'), $content);
+        }
+    
+        $html_description = implode('', $notices);
+    }
+?>
+
+<?php
     echo '<div class="index">';
     echo $this->element('/genericElements/IndexTable/index_table', array(
         'data' => array(
@@ -90,6 +116,7 @@
                 ),
             ),
             'title' => __('Galaxy index'),
+            'html' => $html_description,
             'actions' => array(
                 array(
                     'url' => '/galaxies/view',
@@ -122,9 +149,19 @@
                         return $isSiteAdmin && $row['Galaxy']['enabled'];
                     }
                 ),
+                [
+                    'title' => __('Edit'),
+                    'icon' => 'edit',
+                    'title' => __('View'),
+                    'url' => $baseurl . '/galaxies/edit',
+                    'url_params_data_paths' => ['Galaxy.id'],
+                    'complex_requirement' => function ($row) use ($isSiteAdmin, $me) {
+                        return !$row['Galaxy']['default'] && ($isSiteAdmin || ($row['Galaxy']['org_id'] === $me['org_id'] && $me['Role']['perm_galaxy_editor']));
+                    }
+                ],
                 array(
                     'url' => '/galaxies/delete',
-		            'title' => __('Delete'),
+                    'title' => __('Delete'),
                     'url_params_data_paths' => array(
                         'Galaxy.id'
                     ),

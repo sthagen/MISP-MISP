@@ -420,6 +420,24 @@ paths:
         default:
           $ref: "#/components/responses/ApiErrorResponse"
 
+  /attributes/enrich/{attributeId}:
+    post:
+      summary: "Enrich an attribute with the given modules"
+      operationId: enrichAttribute
+      tags:
+        - Attributes
+      parameters:
+        - $ref: "#/components/parameters/attributeIdParameter"
+      requestBody:
+        $ref: "#/components/requestBodies/EnrichAttributeRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/EnrichAttributeResponse"
+        "403":
+          $ref: "#/components/responses/UnauthorizedApiErrorResponse"
+        default:
+          $ref: "#/components/responses/ApiErrorResponse"
+
   /eventReports/view/{eventReportId}:
     get:
       summary: "Get event report by ID"
@@ -727,6 +745,24 @@ paths:
       responses:
         "200":
           $ref: "#/components/responses/RemoveEventTagResponse"
+        "403":
+          $ref: "#/components/responses/UnauthorizedApiErrorResponse"
+        default:
+          $ref: "#/components/responses/ApiErrorResponse"
+
+  /events/enrichEvent/{eventId}:
+    post:
+      summary: "Enrich an event with the given modules"
+      operationId: enrichEvent
+      tags:
+        - Events
+      parameters:
+        - $ref: "#/components/parameters/eventIdParameter"
+      requestBody:
+        $ref: "#/components/requestBodies/EnrichEventRequest"
+      responses:
+        "200":
+          $ref: "#/components/responses/EnrichEventResponse"
         "403":
           $ref: "#/components/responses/UnauthorizedApiErrorResponse"
         default:
@@ -3142,6 +3178,14 @@ components:
             - $ref: "#/components/schemas/NullableMicroTimestamp"
             - type: string
               format: date-time
+        Tag:
+          type: array
+          items:
+            $ref: "#/components/schemas/Tag"
+        Galaxy:
+          type: array
+          items:
+            $ref: "#/components/schemas/Galaxy"
 
     Attribute:
       allOf:
@@ -5737,6 +5781,220 @@ components:
           type: string
           example: "10.0.0.10"
 
+    # Modules
+    EnrichModulesList:
+      type: object
+      properties:
+        reversedns:
+          type: boolean
+        sigma_syntax_validator:
+          type: boolean
+        ods_enrich:
+          type: boolean
+        recordedfuture:
+          type: boolean
+        eupi:
+          type: boolean
+        docx_enrich:
+          type: boolean
+        passivetotal:
+          type: boolean
+        abuseipdb:
+          type: boolean
+        ransomcoindb:
+          type: boolean
+        domaintools:
+          type: boolean
+        crowdstrike_falcon:
+          type: boolean
+        google_safe_browsing:
+          type: boolean
+        geoip_country:
+          type: boolean
+        joesandbox_query:
+          type: boolean
+        crowdsec:
+          type: boolean
+        geoip_asn:
+          type: boolean
+        rbl:
+          type: boolean
+        yeti:
+          type: boolean
+        ocr_enrich:
+          type: boolean
+        onyphe:
+          type: boolean
+        odt_enrich:
+          type: boolean
+        socialscan:
+          type: boolean
+        sophoslabs_intelix:
+          type: boolean
+        mmdb_lookup:
+          type: boolean
+        vmray_submit:
+          type: boolean
+        trustar_enrich:
+          type: boolean
+        ipinfo:
+          type: boolean
+        backscatter_io:
+          type: boolean
+        ipasn:
+          type: boolean
+        urlscan:
+          type: boolean
+        threatcrowd:
+          type: boolean
+        html_to_markdown:
+          type: boolean
+        yara_query:
+          type: boolean
+        sigma_queries:
+          type: boolean
+        xforceexchange:
+          type: boolean
+        whois:
+          type: boolean
+        pdf_enrich:
+          type: boolean
+        threatfox:
+          type: boolean
+        clamav:
+          type: boolean
+        vmware_nsx:
+          type: boolean
+        sigmf-expand:
+          type: boolean
+        urlhaus:
+          type: boolean
+        stix2_pattern_syntax_validator:
+          type: boolean
+        censys_enrich:
+          type: boolean
+        variotdbs:
+          type: boolean
+        joesandbox_submit:
+          type: boolean
+        virustotal_public:
+          type: boolean
+        macaddress_io:
+          type: boolean
+        mcafee_insights_enrich:
+          type: boolean
+        countrycode:
+          type: boolean
+        shodan:
+          type: boolean
+        dnsdb_query:
+          type: boolean
+        greynoise:
+          type: boolean
+        xlsx_enrich:
+          type: boolean
+        lastline_submit:
+          type: boolean
+        assemblyline_submit:
+          type: boolean
+        hashlookup:
+          type: boolean
+        apivoid:
+          type: boolean
+        lastline_query:
+          type: boolean
+        eql:
+          type: boolean
+        cuckoo_submit:
+          type: boolean
+        hyasinsight:
+          type: boolean
+        assemblyline_query:
+          type: boolean
+        circl_passivedns:
+          type: boolean
+        securitytrails:
+          type: boolean
+        hashdd:
+          type: boolean
+        geoip_city:
+          type: boolean
+        qrcode:
+          type: boolean
+        sourcecache:
+          type: boolean
+        threatminer:
+          type: boolean
+        cytomic_orion:
+          type: boolean
+        iprep:
+          type: boolean
+        qintel_qsentry:
+          type: boolean
+        wiki:
+          type: boolean
+        cve:
+          type: boolean
+        btc_scam_check:
+          type: boolean
+        whoisfreaks:
+          type: boolean
+        google_search:
+          type: boolean
+        malwarebazaar:
+          type: boolean
+        intel471:
+          type: boolean
+        btc_steroids:
+          type: boolean
+        mwdb:
+          type: boolean
+        dbl_spamhaus:
+          type: boolean
+        onyphe_full:
+          type: boolean
+        ipqs_fraud_and_risk_scoring:
+          type: boolean
+        farsight_passivedns:
+          type: boolean
+        cve_advanced:
+          type: boolean
+        cpe:
+          type: boolean
+        passive-ssh:
+          type: boolean
+        vulners:
+          type: boolean
+        yara_syntax_validator:
+          type: boolean
+        jinja_template_rendering:
+          type: boolean
+        virustotal:
+          type: boolean
+        macvendors:
+          type: boolean
+        vulndb:
+          type: boolean
+        circl_passivessl:
+          type: boolean
+        dns:
+          type: boolean
+        otx:
+          type: boolean
+        bgpranking:
+          type: boolean
+        extract_url_components:
+          type: boolean
+        intelmq_eventdb.experimental:
+          type: boolean
+        apiosintds:
+          type: boolean
+        pptx_enrich:
+          type: boolean
+        hibp:
+          type: boolean
+      additionalProperties: false
+
     # General
     AuthKeyRaw:
       type: string
@@ -6924,6 +7182,20 @@ components:
               returnFormat:
                 $ref: "#/components/schemas/EventsRestSearchReturnFormat"
 
+    EnrichEventRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EnrichModulesList"
+
+    EnrichAttributeRequest:
+      required: true
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/EnrichModulesList"
+
     SearchGalaxyRequest:
       required: true
       content:
@@ -7658,6 +7930,29 @@ components:
           schema:
             $ref: "#/components/schemas/DescribeAttributeTypesResponse"
 
+    EnrichAttributeResponse:
+      description: "Enrich attribute response"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              saved:
+                description: "Present and `true` if the attribute was succesfully enriched."
+                type: boolean
+              success:
+                description: "Status message of the operation."
+                type: boolean
+              name:
+                type: string
+                example: "Job queued (job ID: 1)."
+              message:
+                type: string
+                example: "Job queued (job ID: 1)."
+              url:
+                type: string
+                example: "/attributes/enrich/1"
+
     AddEventResponse:
       description: "A freshly created event"
       content:
@@ -7935,6 +8230,35 @@ components:
               properties:
                 EventReport:
                   $ref: "#/components/schemas/EventReport"
+
+    EnrichEventResponse:
+      description: "Enrich event response"
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              saved:
+                description: "Present and `true` if the event was succesfully enriched."
+                type: boolean
+              success:
+                description: "Status message of the operation."
+                type: boolean
+              name:
+                type: string
+                example: "enrichEvent"
+              message:
+                type: string
+                example: "enrichEvent"
+              url:
+                type: string
+                example: "/events/enrichEvent/1"
+              data:
+                type: string
+                example: "#1 attributes have been created during the enrichment process."
+              id: 
+                type: string
+                example: "1"
 
     GalaxyListResponse:
       description: "A list of galaxies"

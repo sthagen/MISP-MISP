@@ -6,7 +6,7 @@ class WorkflowBaseModule
     public $is_custom = false;
     public $expect_misp_core_format = false;
     public $id = 'to-override';
-    public $name = 'to-override';
+    public $name = 'Ad-Hoc';
     public $version = '0.1';
     public $description = 'to-override';
     public $icon = '';
@@ -319,6 +319,117 @@ class WorkflowBaseTriggerModule extends WorkflowBaseModule
     {
         App::uses('WorkflowFormatConverterTool', 'Tools');
         return WorkflowFormatConverterTool::convert($data);   
+    }
+}
+
+class AdHocTrigger extends WorkflowBaseTriggerModule
+{
+    public $id = 'adhoc-trigger';
+    public $icon = 'hand-pointer';
+    public $description = "Ad-Hoc trigger to be called manually";
+    public $is_adhoc = true;
+    public $blocking = true;
+    public $misp_core_format = true;
+    public $is_misp_module = false;
+    public $is_custom = false;
+    public $params = [];
+
+    private $Event;
+    private $Attribute;
+    private $EventReport;
+
+    public function __construct()
+    {
+        parent::__construct();
+        $this->params = [
+            [
+                'id' => 'scope',
+                'label' => __('Data Input Scope'),
+                'type' => 'select',
+                'default' => 'passed_filters',
+                'options' => [
+                    'passed_roaming_data' => 'Passed Roaming Data',
+                    'passed_event_ids' => 'Passed Event IDs',
+                    'events' => 'Events RestSearch',
+                    // 'attributes' => 'Attributes RestSearch',
+                    // 'event_reports' => 'Event Reports RestSearch',
+                ],
+            ],
+            [
+                'id' => 'filters',
+                'label' => __('Search Filters'),
+                'type' => 'textarea',
+                'default' => '{}',
+                'placeholder' => '{
+    "publish_timestamp": "24h"
+}',
+                'jinja_supported' => true,
+                'display_on' => [
+                    'scope' => ['events', 'attributes'],
+                ],
+            ],
+        ];
+    }
+
+    public function collectData(array $user, array $indexed_params, array $passedFilters = []): array
+    {
+        $scope = $indexed_params['scope'];
+        $filters = $indexed_params['filters'];
+        $filters = JsonTool::decode($filters);
+
+        if ($scope == 'passed_roaming_data') {
+            return [$passedFilters];
+        } else if ($scope == 'passed_event_ids') {
+            return $this->getEventFromPassedFilters($user, $passedFilters);
+        } else if ($scope == 'events') {
+            return $this->getEvents($user, $filters);
+        } else if ($scope == 'attributes') {
+            return []; // TODO: Ensure it works correctly before allowing user to use this scope
+            return $this->getAttributes($user, $filters);
+        } else if ($scope == 'event_reports') {
+            return []; // TODO: Ensure it works correctly before allowing user to use this scope
+            return $this->getEventReports($user, $filters);
+        } else {
+            return [];
+        }
+    }
+
+    private function getEventFromPassedFilters(array $user, array $passedFilters = []): array
+    {
+        $this->Event = ClassRegistry::init('Event');
+        if (!empty($passedFilters['Event'])) {
+            return []; // Passed filter is an Event and not restSearch filters
+        }
+        $final = $this->Event->restSearch($user, 'json', $passedFilters);
+        return JsonTool::decode($final->intoString())['response'];
+    }
+    private function getEvents(array $user, array $filters): array
+    {
+        $this->Event = ClassRegistry::init('Event');
+        $final = $this->Event->restSearch($user, 'json', $filters);
+        return JsonTool::decode($final->intoString())['response'];
+    }
+    private function getAttributes(array $user, array $filters): array
+    {
+        $this->Attribute = ClassRegistry::init('Attribute');
+        $final = $this->Attribute->restSearch($user, 'json', $filters);
+        return JsonTool::decode($final->intoString())['response'];
+    }
+    private function getEventReports(array $user, array $filters): array
+    {
+        $this->EventReport = ClassRegistry::init('EventReport');
+        $final = $this->EventReport->restSearch($user, 'json', $filters);
+        return JsonTool::decode($final->intoString())['response'];
+    }
+
+    public function normalizeData(array $data)
+    {
+        $this->Event = ClassRegistry::init('Event');
+        $this->Attribute = ClassRegistry::init('Attribute');
+        $this->EventReport = ClassRegistry::init('EventReport');
+
+        $event = parent::normalizeData($data);
+        return $event;
     }
 }
 

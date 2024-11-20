@@ -1235,6 +1235,12 @@ class EventsController extends AppController
         } else {
             $this->set('extended', 0);
         }
+        if (!empty($filters['extending'])) {
+            $conditions['extending'] = 1;
+            $this->set('extending', 1);
+        } else {
+            $this->set('extending', 0);
+        }
         if (!empty($filters['overrideLimit'])) {
             $conditions['overrideLimit'] = 1;
         }
@@ -1351,7 +1357,7 @@ class EventsController extends AppController
         }
         $this->params->params['paging'] = array($this->modelClass => $params);
         $this->set('event', $event);
-        $this->set('includeOrgColumn', (isset($conditions['extended']) || $containsProposals));
+        $this->set('includeOrgColumn', (isset($conditions['extended']) || isset($conditions['extending']) || $containsProposals));
         $this->set('includeSightingdb', (!empty($filters['includeSightingdb']) && Configure::read('Plugin.Sightings_sighting_db_enable')));
         $this->set('deleted', isset($filters['deleted']) && $filters['deleted'] != 0);
         $this->set('attributeFilter', isset($filters['attributeFilter']) ? $filters['attributeFilter'] : 'all');
@@ -1596,7 +1602,7 @@ class EventsController extends AppController
         if (!empty($filters['includeSightingdb']) && Configure::read('Plugin.Sightings_sighting_db_enable')) {
             $this->set('sightingdbs', $this->Sightingdb->getSightingdbList($user));
         }
-        $this->set('includeOrgColumn', $this->viewVars['extended'] || $containsProposals);
+        $this->set('includeOrgColumn', $this->viewVars['extended'] || $this->viewVars['extending'] || $containsProposals);
         $this->set('includeSightingdb', !empty($filters['includeSightingdb']) && Configure::read('Plugin.Sightings_sighting_db_enable'));
         $this->set('relatedEventCorrelationCount', $relatedEventCorrelationCount);
         $this->set('oldest_timestamp', $oldestTimestamp === PHP_INT_MAX ? false : $oldestTimestamp);
@@ -1667,7 +1673,6 @@ class EventsController extends AppController
             $exists = $this->Event->fetchSimpleEvent($this->Auth->user(), $id, ['fields' => ['id']]);
             return new CakeResponse(['status' => $exists ? 200 : 404]);
         }
-
         if (is_numeric($id)) {
             $conditions = array('eventid' => $id);
         } else if (Validation::uuid($id)) {
@@ -1733,6 +1738,12 @@ class EventsController extends AppController
             $this->set('extended', 1);
         } else {
             $this->set('extended', 0);
+        }
+        if (!empty($namedParams['extending']) || !empty($this->request->data['extending'])) {
+            $conditions['extending'] = 1;
+            $this->set('extending', 1);
+        } else {
+            $this->set('extending', 0);
         }
         $conditions['excludeLocalTags'] = false;
         $conditions['includeWarninglistHits'] = true;
@@ -2363,10 +2374,11 @@ class EventsController extends AppController
 
                 $takeOwnership = Configure::read('MISP.take_ownership_xml_import')
                     && (isset($this->request->data['Event']['takeownership']) && $this->request->data['Event']['takeownership'] == 1);
+                $allowLockOverride = Configure::read('MISP.allow_users_override_locked_field_when_importing_events') && (isset($this->request->data['Event']['allow_lock_override']) && $this->request->data['Event']['allow_lock_override'] == 1);
 
                 $publish = $this->request->data['Event']['publish'] ?? false;
                 try {
-                    $results = $this->Event->addMISPExportFile($this->Auth->user(), $data, $isXml, $takeOwnership, $publish);
+                    $results = $this->Event->addMISPExportFile($this->Auth->user(), $data, $isXml, $takeOwnership, $publish, $allowLockOverride);
                 } catch (Exception $e) {
                     $this->log("Exception during processing MISP file import: {$e->getMessage()}");
                     $this->Flash->error(__('Could not process MISP export file. %s', $e->getMessage()));
@@ -5058,7 +5070,7 @@ class EventsController extends AppController
             $galaxy_id = $mitreAttackGalaxyId;
         }
 
-        $matrixData = $this->Galaxy->getMatrix($galaxy_id); // throws exception if matrix not found
+        $matrixData = $this->Galaxy->getMatrix($this->Auth->user(), $galaxy_id); // throws exception if matrix not found
 
         $local = !empty($this->params['named']['local']);
         $this->set('local', $local);
@@ -5176,7 +5188,10 @@ class EventsController extends AppController
         App::uses('ColourGradientTool', 'Tools');
         $gradientTool = new ColourGradientTool();
         $colours = $gradientTool->createGradientFromValues($scores);
+        $this->set('galaxy_id', $galaxy_id);
         $this->set('eventId', $eventId);
+        $this->set('extended', $extended);
+        $this->set('extending', $extending);
         $this->set('target_type', $scope);
         $this->set('columnOrders', $killChainOrders);
         $this->set('tabs', $tabs);
@@ -5189,9 +5204,11 @@ class EventsController extends AppController
         $this->set('pickingMode', !$disable_picking);
         $this->set('target_id', $scope_id);
         if ($matrixData['galaxy']['id'] == $mitreAttackGalaxyId) {
-            $this->set('defaultTabName', 'mitre-attack');
+            $this->set('defaultTabName', 'attack-enterprise');
             $this->set('removeTrailling', 2);
         }
+        $matrixGalaxies = $this->Galaxy->getAllowedMatrixGalaxies($this->Auth->user());
+        $this->set('matrixGalaxies', $matrixGalaxies);
 
         $this->render('/Elements/view_galaxy_matrix');
     }
@@ -5877,6 +5894,48 @@ class EventsController extends AppController
         }
     }
 
+    public function runWorkflow($id)
+    {
+        $event = $this->Event->fetchSimpleEvent($this->Auth->user(), $id);
+        if (empty($event)) {
+            throw new MethodNotAllowedException(__('Invalid Event'));
+        }
+        if (!$this->__canModifyEvent($event)) {
+            throw new ForbiddenException(__('You do not have permission to do that.'));
+        }
+        if ($this->request->is('Post')) {
+            $workflow_ids = [];
+            foreach ($this->request->data['Event'] as $workflow_id => $enabled) {
+                if ($enabled) {
+                    $workflow_ids[] = $workflow_id;
+                }
+            }
+            $results = $this->Event->runWorkflow($id, $workflow_ids);
+            $succesMessage = __('Successfully ran %s Workflows on Event %s', count($workflow_ids), h($id));
+            $errorMessage = __('Error(s) while running Workflow(s): ') . implode(', ', $results['error_messages']);
+            if ($this->_isRest()) {
+                return $this->RestResponse->saveSuccessResponse('Events', 'runWorkflow', $id, $this->response->type(), $results['success_count'] > 0 ? $succesMessage : $errorMessage);
+            } else {
+                if ($results['success_count'] > 0) {
+                    $this->Flash->success($succesMessage);
+                } else {
+                    $this->Flash->error($errorMessage);
+                }
+                $this->redirect('/events/view/' . $id);
+            }
+        } else {
+            $this->loadModel('Workflow');
+            $workflows = $this->Workflow->fetchAdHocWorkflows(true);
+            $workflows = $this->Workflow->attachTriggerParamsToWorkflow($workflows);
+            $allowedWorkflows = array_filter($workflows, function($workflow) {
+                return $workflow['trigger_scope'] == 'passed_event_ids';
+            });
+            $this->layout = false;
+            $this->set('workflows', $allowedWorkflows);
+            $this->render('ajax/run_workflow');
+        }
+    }
+
     public function getEventInfoById($id)
     {
         $user = $this->_closeSession();
@@ -5926,6 +5985,7 @@ class EventsController extends AppController
                 'modules' => $modules
             ));
             if ($this->_isRest()) {
+                return $this->RestResponse->successResponse($id, 'enrichEvent', $result);
             } else {
                 if ($result === true) {
                     $result = __('Enrichment task queued for background processing. Check back later to see the results.');

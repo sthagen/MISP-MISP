@@ -297,7 +297,7 @@ class MispObject extends AppModel
             $object['sharing_group_id'] = 0;
         }
         if (!isset($object['distribution'])) {
-            $object['distribution'] = 5;
+            $object['distribution'] = is_null(Configure::read('MISP.default_object_distribution')) ? 5 : Configure::read('MISP.default_object_distribution');
         }
         return true;
     }
@@ -1155,7 +1155,7 @@ class MispObject extends AppModel
         return true;
     }
 
-    public function editObject($object, array $event, $user, $log, $force = false, &$nothingToChange = false)
+    public function editObject($object, array $event, $user, $log, $force = false, &$nothingToChange = false, $server = null)
     {
         $eventId = $event['Event']['id'];
         $object['event_id'] = $eventId;
@@ -1243,8 +1243,7 @@ class MispObject extends AppModel
                     $attributes[] = $result;
                 }
             }
-            $this->Attribute->editAttributeBulk($attributes, $event, $user);
-            $this->Attribute->editAttributePostProcessing($attributes, $event, $user);
+            $this->Attribute->editAttributeBulk($attributes, $event, $user, $server);
         }
         return true;
     }

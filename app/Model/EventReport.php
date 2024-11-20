@@ -1,6 +1,8 @@
 <?php
 App::uses('AppModel', 'Model');
 App::uses('SyncTool', 'Tools');
+App::uses('MISPElementHTMLFormatterTool', 'Tools');
+App::uses('Folder', 'Utility');
 
 /**
  * @property Event $Event
@@ -69,6 +71,19 @@ class EventReport extends AppModel
         ),
     );
 
+    public $hasMany = [
+        'EventReportTag' => [
+            'dependent' => true
+        ],
+    ];
+
+    const PICTURE_FOLDER_PATH =  APP . 'files/img/eventreports';
+    const REDIS_KEY_PICTURE_ALIAS =  'eventreport_picture_alias';
+    const REDIS_KEY_PICTURE_FILENAME_FROM_ALIAS =  'eventreport_picture_filename_from_alias';
+
+    const SUPPORTED_IMAGES = ['gif', 'jpg', 'jpeg', 'png', 'svg',];
+    private $imageCache = [];
+
     public function beforeValidate($options = array())
     {
         $eventReport = &$this->data['EventReport'];
@@ -88,7 +103,7 @@ class EventReport extends AppModel
         // Set defaults for when some of the mandatory fields don't have defaults
         // These fields all have sane defaults either based on another field, or due to server settings
         if (!isset($eventReport['distribution'])) {
-            $eventReport['distribution'] = $this->Event->Attribute->defaultDistribution();
+            $eventReport['distribution'] = is_null(Configure::read('MISP.default_eventreport_distribution')) ? 5 : Configure::read('MISP.default_eventreport_distribution');
         }
         return true;
     }
@@ -569,15 +584,243 @@ class EventReport extends AppModel
             $objectTemplates = [];
         }
         $this->Galaxy = ClassRegistry::init('Galaxy');
-        $allowedGalaxies = $this->Galaxy->getAllowedMatrixGalaxies();
+        $allowedGalaxies = $this->Galaxy->getAllowedMatrixGalaxies($user);
         $allowedGalaxies = Hash::combine($allowedGalaxies, '{n}.Galaxy.uuid', '{n}.Galaxy');
+        $pictureAliases = $this->getAllAliases();
         return [
             'attribute' => $attributes,
             'object' => $objects,
             'objectTemplates' => $objectTemplates,
             'galaxymatrix' => $allowedGalaxies,
-            'tagname' => $allTagNames
+            'tagname' => $allTagNames,
+            'picture_aliases' => $pictureAliases,
         ];
+    }
+
+    public function replaceWithTemplateVars($content, $user)
+    {
+        $this->UserSetting = ClassRegistry::init('UserSetting');
+        $templateVariables = $this->UserSetting->getValueForUser($user['id'], 'eventreport_template_variables');
+        $templateVarProxy = !empty($templateVariables) ? Hash::combine($templateVariables, '{n}.name', '{n}.value') : [];
+        foreach ($templateVarProxy as $varName => $replacementValue) {
+            $varSyntax = '/{{\s*' . preg_quote($varName, '/') . '\s*}}/';
+            $content = preg_replace($varSyntax, $replacementValue, $content);
+
+        }
+        return $content;
+    }
+
+    public function replaceMISPElementByTheirValue($content, $event_id, $user, $useHtml=false)
+    {
+        $elementFormatter = new MISPElementHTMLFormatterTool();
+        $proxyMISPElements = $this->getProxyMISPElements($user, $event_id);
+        $replaceContent = '';
+        $authorizedMISPElements = ['attribute', 'object', 'tag'];
+        $reMISPElement = '/@\[(?<scope>' . implode('|', $authorizedMISPElements) . ')\]\((?<elementid>[^\)]+)\)/';
+        $offset = 0;
+
+        if (preg_match_all($reMISPElement, $content, $matches, PREG_OFFSET_CAPTURE)) {
+            foreach ($matches[0] as $index => $match) {
+                $scope = $matches['scope'][$index][0];
+                $elementId = $matches['elementid'][$index][0];
+                $matchPosition = $matches[0][$index][1];
+
+                $scopeProxy = $scope == 'tag' ? 'tagname' : $scope;
+                if ($scope == 'tag' && empty($proxyMISPElements['tagname'][$elementId])) {
+                    $proxyMISPElements['tagname'][$elementId] = $this->fetchTagDataIfExists($elementId);
+                }
+                $element = isset($proxyMISPElements[$scopeProxy][$elementId]) ? $proxyMISPElements[$scopeProxy][$elementId] : null;
+                if ($element !== null) {
+                    if ($scope == 'attribute') {
+                        if (!empty($element['object_relation'])) {
+                            if (empty($useHtml)) {
+                                $replacement = $scope . '[type:' . $element['object_relation'] . '][value:' . $element['value'] . ']';
+                            } else {
+                                $relatedObject = $proxyMISPElements['object'][$element['object_uuid']];
+                                $replacement = $elementFormatter->objectAttribute($relatedObject, $element);
+                            }
+                        } else {
+                            if (empty($useHtml)) {
+                                $replacement = $scope . '[type:' . $element['type'] . '][value:' . $element['value'] . ']';
+                            } else {
+                                $replacement = $elementFormatter->attribute($element);
+                            }
+                        }
+                    } elseif ($scope == 'object') {
+                        if (empty($useHtml)) {
+                            $replacement = $scope . '[name:' . $element['name'] . '][value:' . $element['Attribute'][0]['value'] . ']';
+                        } else {
+                            $replacement = $elementFormatter->object($element);
+                        }
+                    } elseif ($scope == 'tag') {
+                        if (empty($useHtml)) {
+                            $replacement = $scope . '[' . $element['name'] . ']';
+                        } else {
+                            $replacement = $elementFormatter->tag($element);
+                        }
+                    }
+                } else {
+                    $replacement = $scope . '-' . $elementId;
+                }
+
+                $replaceContent .= substr($content, $offset, $matchPosition - $offset) . $replacement;
+                $offset = $matchPosition + strlen($match[0]);
+            }
+        }
+
+        $replaceContent .= substr($content, $offset);
+        return $replaceContent;
+    }
+
+    public function replacePicturesReferenceWithB64Value($content, $event_id, $user)
+    {
+        $this->Attribute = ClassRegistry::init('Attribute');
+        $matches = [];
+        $rePictureElement = sprintf('/(?<!@)!\[[^\[\]\(\)]+\]\((?<filename>[a-zA-Z0-9_\/\-]+(?>\.(?>%s))?)\)/m', implode('|', self::SUPPORTED_IMAGES));
+        $reUUID4 = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+        $reFilenameWithoutPath = sprintf('/\/eventReports\/viewPicture\/(?<uuid>%s(?>\.(?>%s))?)/', $reUUID4, implode('|', self::SUPPORTED_IMAGES));
+        
+        // Get all usage of `![]()` and replace it with `<img src="data:image/$ext;base64`
+        preg_match_all($rePictureElement, $content, $matches, PREG_SET_ORDER);
+        foreach ($matches as $match) {
+            $search = $match[0];
+            $trueFilenameMatches = [];
+            $hasMatched = preg_match($reFilenameWithoutPath, $match['filename'], $trueFilenameMatches);
+            if ($hasMatched) {
+                if (empty($trueFilenameMatches['uuid'])) {
+                    continue;
+                }
+                $trueFilename = $trueFilenameMatches['uuid'];
+            } else {
+                $trueFilename = str_replace('/eventReports/viewPicture/', '', $match['filename']);
+            }
+            
+            try {
+                $file = $this->getPicture($trueFilename);
+            } catch (NotFoundException $e) {
+                continue;
+            }
+            $b64 = $this->getBase64FromFile(self::PICTURE_FOLDER_PATH . '/' . $file['filename']);
+            $replacement = sprintf('<img src="%s"/>', $b64);
+            $content = str_replace($search, $replacement, $content);
+        }
+
+        $reAttributePicture = sprintf('/@!\[[^\[\]\(\)]+\]\((?<uuid>%s)?\)/m', $reUUID4);
+        preg_match_all($reAttributePicture, $content, $matches, PREG_SET_ORDER);
+        foreach ($matches as $match) {
+            $search = $match[0];
+            $uuid = $match['uuid'];
+
+            try {
+                $attribute = $this->Attribute->fetchAttributeSimple($user, [
+                    'conditions' => [
+                        'Attribute.uuid' => $uuid,
+                    ]
+                ]);
+                $b64 = $this->Attribute->base64EncodeAttachment($attribute['Attribute']);
+                $ext = strtolower(pathinfo($attribute['Attribute']['value'], PATHINFO_EXTENSION));
+                if ($ext === 'svg') {
+                    $mime = 'image/svg+xml';
+                } else if (in_array($ext, self::SUPPORTED_IMAGES)) {
+                    $mime = 'image/' . $ext;
+                } else {
+                    throw new InvalidArgumentException(sprintf("Only SVG, %s images are supported, '$ext' file provided.", implode(', ', self::SUPPORTED_IMAGES)));
+                }
+                $encodedPicture = "data:$mime;base64," . $b64;
+            } catch (Exception $e) {
+                continue;
+            }
+            $replacement = sprintf('<img src="%s"/>', $encodedPicture);
+            $content = str_replace($search, $replacement, $content);
+        }
+
+        return $content;
+    }
+
+    private function getBase64FromFile($filepath)
+    {
+        if (isset($this->imageCache[$filepath])) {
+            return $this->imageCache[$filepath];
+        }
+
+        try {
+            $fileContent = FileAccessTool::readFromFile($filepath);
+        } catch (Exception $e) {
+            return 'data:null'; // in case file doesn't exists or is not readable
+        }
+
+        $ext = strtolower(pathinfo($filepath, PATHINFO_EXTENSION));
+        $fileContentEncoded = base64_encode($fileContent);
+        if ($ext === 'svg') {
+            $mime = 'image/svg+xml';
+        } else if (in_array($ext, self::SUPPORTED_IMAGES)) {
+            $mime = 'image/' . $ext;
+        } else {
+            throw new InvalidArgumentException(sprintf("Only SVG, %s images are supported, '$ext' file provided.", implode(', ', self::SUPPORTED_IMAGES)));
+        }
+        $base64 = "data:$mime;base64,$fileContentEncoded";
+
+        return $this->imageCache[$filepath] = $base64;
+    }
+
+    public function convertToPDF(array $user, array $report)
+    {
+        $convertedReport = $this->doReplacementOfCustomSyntax($report, $user);
+        $moduleName = 'convert_markdown_to_pdf';
+        $mispModule = ClassRegistry::init('Module');
+        $postData = [
+            'module' => $moduleName,
+            'text' => JsonTool::encode([
+                'markdown' => $convertedReport,
+            ])
+        ];
+
+        $module = $mispModule->getEnabledModule($moduleName, 'expansion');
+        if (isset($module['meta']['config'])) {
+            foreach ($module['meta']['config'] as $conf) {
+                $postData['config'][$conf] = Configure::read('Plugin.Enrichment_' . $moduleName . '_' . $conf);
+            }
+        }
+
+        $result = $mispModule->queryModuleServer($postData, false, 'Enrichment', false, [], true);
+        if (!empty($result['error'])) {
+            throw new BadRequestException('Error Processing Request: ' . $result['error']);
+        } else if (empty($result)) {
+            throw new BadRequestException('Error Processing Request: Error while querying misp-module `convert_markdown_to_pdf` module.');
+        }
+        $converted = $result['results'][0]['values'][0]; // The pdf file is base64 encoded
+        $pdfFile = base64_decode($converted);
+        return $pdfFile;
+    }
+
+    private function doReplacementOfCustomSyntax(array $report, array $user)
+    {
+        $content = $report['EventReport']['content'];
+        $contentWithTemplateVars = $this->replaceWithTemplateVars($content, $user);
+        $contentWithVarsUnderGFM = $this->replaceMISPElementByTheirValue($contentWithTemplateVars, $report['EventReport']['event_id'], $user, true);
+        $contentWithEncodedPictures = $this->replacePicturesReferenceWithB64Value($contentWithVarsUnderGFM, $report['EventReport']['event_id'], $user);
+        return $contentWithEncodedPictures;
+    }
+
+    private function fetchTagDataIfExists($tagname)
+    {
+        $this->Tag = ClassRegistry::init('Tag');
+        $tag = $this->Tag->find('first', [
+            'recursive' => -1,
+            'conditions' => [
+                'name' => $tagname
+            ],
+        ]);
+        if (!empty($tag)) {
+            $tag = $tag['Tag'];
+        } else {
+            $colour = '#658cc9';
+            $tag = [
+                'name' => $tagname,
+                'colour' => $colour,
+            ];
+        }
+        return $tag;
     }
 
     private function saveAndReturnErrors($data, $saveOptions = [], $errors = [])
@@ -1021,8 +1264,15 @@ class EventReport extends AppModel
         return $report;
     }
 
-    public function sendToLLM($report, $user, &$errors)
+    public function sendToLLM($report, $user, &$errors, $options = [])
     {
+        $defaultOptions = [
+            'insert_executive_summary' => true,
+            'tag_event_with_threat_actor' => true,
+            'tag_event_with_threat_actor_country' => true,
+            'tag_event_with_threat_actor_motivation' => true,
+        ];
+        $options = array_merge($defaultOptions, $options);
         $syncTool = new SyncTool();
         $config = [];
         $HttpSocket = $syncTool->setupHttpSocket($config, $this->timeout);
@@ -1067,29 +1317,274 @@ class EventReport extends AppModel
 	'AI_CouldWeBeAffected' => true
 );
 */
-        
-        if (!empty($data['AI_ExecutiveSummary'])) {
-            $report['EventReport']['content'] = '# Executive Summary' . PHP_EOL . $data['AI_ExecutiveSummary'] . PHP_EOL . PHP_EOL . '# Report' . PHP_EOL . $report['EventReport']['content'];
+        if ($options['insert_executive_summary']) {
+            if (!empty($data['AI_ExecutiveSummary'])) {
+                $report['EventReport']['content'] = '# Executive Summary' . PHP_EOL . $data['AI_ExecutiveSummary'] . PHP_EOL . PHP_EOL . '# Report' . PHP_EOL . $report['EventReport']['content'];
+            }
+            $this->save($report);
         }
-        $this->save($report);
         $event = $this->Event->find('first', [
             'conditions' => ['Event.id' => $report['EventReport']['event_id']],
             'recursive' => -1
         ]);
-        if (!empty($data['AI_ThreatActor'])) {
-            $tag_id = $this->Event->EventTag->Tag->captureTag(['name' => 'misp-galaxy:threat-actor="' . $data['AI_ThreatActor'] . '"'], $user);
-            $this->Event->EventTag->attachTagToEvent($event['Event']['id'], ['id' => $tag_id]);
+        if ($options['tag_event_with_threat_actor']) {
+            if (!empty($data['AI_ThreatActor'])) {
+                $tag_id = $this->Event->EventTag->Tag->captureTag(['name' => 'misp-galaxy:threat-actor="' . $data['AI_ThreatActor'] . '"'], $user);
+                $this->Event->EventTag->attachTagToEvent($event['Event']['id'], ['id' => $tag_id]);
+            }
         }
 
-        if (!empty($data['AI_AttributedCountry'])) {
-            $tag_id = $this->Event->EventTag->Tag->captureTag(['name' => 'misp-galaxy:threat-actor-country="' . $data['AI_AttributedCountry'] . '"'], $user);
-            $this->Event->EventTag->attachTagToEvent($event['Event']['id'], ['id' => $tag_id]);
+        if ($options['tag_event_with_threat_actor_country']) {
+            if (!empty($data['AI_AttributedCountry'])) {
+                $tag_id = $this->Event->EventTag->Tag->captureTag(['name' => 'misp-galaxy:threat-actor-country="' . $data['AI_AttributedCountry'] . '"'], $user);
+                $this->Event->EventTag->attachTagToEvent($event['Event']['id'], ['id' => $tag_id]);
+            }
         }
 
-        if (!empty($data['AI_Motivation'])) {
-            $tag_id = $this->Event->EventTag->Tag->captureTag(['name' => 'misp-galaxy:threat-actor-motivation="' . $data['AI_Motivation'] . '"'], $user);
-            $this->Event->EventTag->attachTagToEvent($event['Event']['id'], ['id' => $tag_id]);
+        if ($options['tag_event_with_threat_actor_motivation']) {
+            if (!empty($data['AI_Motivation'])) {
+                $tag_id = $this->Event->EventTag->Tag->captureTag(['name' => 'misp-galaxy:threat-actor-motivation="' . $data['AI_Motivation'] . '"'], $user);
+                $this->Event->EventTag->attachTagToEvent($event['Event']['id'], ['id' => $tag_id]);
+            }
         }
         return $report;
+    }
+
+    public function uploadPicture($picture, $report, $saveAsAttachmentConfig=false)
+    {
+        $saveResult = [
+            'success' => false,
+            'image_filename' => null,
+            'image_name' => null,
+            'errors' => [],
+        ];
+        if (!isset($picture['size'])) {
+            $saveResult['errors'][] = __('Picture has not size');
+            return $saveResult;
+        }
+
+        
+
+        if ($picture['size'] > 0 && $picture['error'] == 0) {
+            $extension = pathinfo($picture['name'], PATHINFO_EXTENSION);
+            $pictureUUID = CakeText::uuid();
+            $filename = sprintf('%s.%s', $pictureUUID, $extension);
+
+            if (!in_array($extension, self::SUPPORTED_IMAGES)) {
+                $saveResult['errors'][] = __('Invalid file extension, Only images with the following extensions are allowed: ' . implode(',', self::SUPPORTED_IMAGES));
+                return $saveResult;
+            }
+            $matches = null;
+            $tmp_name = $picture['tmp_name'];
+            if (preg_match_all('/[\w\/\-\.]*/', $tmp_name, $matches) && file_exists($picture['tmp_name'])) {
+                $tmp_name = $matches[0][0];
+                $imgMime = mime_content_type($tmp_name);
+            } else {
+                $saveResult['errors'][] = __('Invalid file.');
+                return $saveResult;
+            }
+            if ($extension !== 'svg' && (function_exists('exif_imagetype') && !exif_imagetype($picture['tmp_name']))) {
+                $saveResult['errors'][] = __('This is not a valid image format.');
+                return $saveResult;
+            }
+
+            if ($extension === 'svg' && !($imgMime === 'image/svg+xml' || $imgMime === 'image/svg')) {
+                $saveResult['errors'][] = __('This is not a valid SVG image.');
+                return $saveResult;
+            }
+
+            if ($extension === 'svg' && !Configure::read('Security.enable_svg_logos')) {
+                $saveResult['errors'][] = __('Invalid file extension, SVG images are not allowed.');
+                return $saveResult;
+            }
+
+            if (!empty($tmp_name) && is_uploaded_file($tmp_name)) {
+                if (!empty($saveAsAttachmentConfig)) {
+                    $this->Attribute = ClassRegistry::init('Attribute');
+                    $tmpfile = new File($tmp_name);
+                    $attribute = [
+                        'Attribute' => [
+                            'value' => $filename,
+                            'category' => 'External analysis',
+                            'type' => 'attachment',
+                            'event_id' => $report['EventReport']['event_id'],
+                            'data_raw' => $tmpfile->read(),
+                            'comment' => $saveAsAttachmentConfig['comment'],
+                            'to_ids' => 0,
+                            'distribution' => $saveAsAttachmentConfig['distribution'],
+                            'sharing_group_id' => isset($saveAsAttachmentConfig['sharing_group_id']) ? $saveAsAttachmentConfig['sharing_group_id'] : 0,
+                        ]
+                    ];
+                    $this->Attribute->create();
+                    $attributeSaveResult = $this->Attribute->save($attribute);
+                    if (!empty($attributeSaveResult)) {
+                        $saveResult['success'] = true;
+                        $saveResult['attribute_uuid'] = $attributeSaveResult['Attribute']['uuid'];
+                    } else {
+                        $saveResult['errors'][] = __('Could not create the Attribute');
+                    }
+                } else {
+                    $pictureFolder = new Folder(self::PICTURE_FOLDER_PATH);
+                    if (is_null($pictureFolder->path)) {
+                        $pictureFolder->create(self::PICTURE_FOLDER_PATH, 0770);
+                    }
+                    $success = move_uploaded_file($tmp_name, self::PICTURE_FOLDER_PATH . '/' . $filename);
+                    if ($success) {
+                        $saveResult['success'] = true;
+                        $saveResult['image_filename'] = $filename;
+                        $saveResult['image_name'] = $picture['name'];
+                    } else {
+                        $saveResult['errors'][] = __('Could not move file');
+                    }
+                }
+                return $saveResult;
+            }
+            $saveResult['errors'][] = __('File was not uploaded correctly');
+            return $saveResult;
+        }
+    }
+
+    public function getPicture($filename)
+    {
+        $imageFromAlias = $this->getImageFromAlias($filename);
+        if (!empty($imageFromAlias)) {
+            $filename = $imageFromAlias;
+        }
+        $filepath = self::PICTURE_FOLDER_PATH . '/' . $filename;
+        $file = new File($filepath);
+        if (!is_file($file->path)) {
+            throw new NotFoundException("File '$filepath' does not exist.");
+        }
+        return [
+            'filename' => $file->name,
+            'file' => $file,
+        ];
+    }
+
+    public function collectImportedPicturesStats()
+    {
+        $pictureFolder = new Folder(self::PICTURE_FOLDER_PATH);
+        $files = $pictureFolder->find();
+        $fileReferenced = [];
+        $fileNotReferenced = [];
+        $aliases = [];
+
+        foreach ($files as $filename) {
+            // check if this file is used in at least one report
+            $reportCount = $this->find('count', [
+                'recursive' => -1,
+                'conditions' => [
+                    'content LIKE' => sprintf('%%/eventReports/viewPicture/%s%%', $filename)
+                ]
+            ]);
+            if (empty($reportCount)) {
+                $fileNotReferenced[] = $filename;
+            } else {
+                $fileReferenced[$filename] = $reportCount;
+            }
+            $aliases[$filename] = $this->getAliasForImage($filename);
+        }
+        return [
+            'all_files' => $files,
+            'file_referenced_count' => $fileReferenced,
+            'file_not_referenced' => $fileNotReferenced,
+            'picture_aliases' => $aliases,
+        ];
+    }
+
+    public function purgeUnusedPictures()
+    {
+        $pictureFolder = new Folder(self::PICTURE_FOLDER_PATH);
+        $files = $pictureFolder->find();
+        foreach ($files as $filename) {
+            // check if this file is used in at least one report
+            $reportCount = $this->find('count', [
+                'recursive' => -1,
+                'conditions' => [
+                    'content LIKE' => sprintf('%%/eventReports/viewPicture/%s%%', $filename)
+                ]
+            ]);
+            if (empty($reportCount)) {
+               $this->purgeImage($filename);
+            }
+        }
+    }
+
+    public function purgeImage($filename)
+    {
+        $filename = basename($filename);
+        try {
+            $redis = $this->setupRedisWithException();
+        } catch (Exception $e) {
+            $redis = null;
+        }
+        $alias = $this->getAliasForImage($filename);
+        if (!is_null($redis)) {
+            $redis->del(sprintf('%s:%s', self::REDIS_KEY_PICTURE_ALIAS, $filename));
+            $redis->del(sprintf('%s:%s', self::REDIS_KEY_PICTURE_FILENAME_FROM_ALIAS, $alias));
+        }
+        $file = new File(self::PICTURE_FOLDER_PATH . '/' . $filename);
+        return $file->delete();
+    }
+
+    public function setFileAlias($data): array
+    {
+        $errors = [];
+        $redis = $this->setupRedisWithException();
+        $filenameForNewAlias = $redis->exists(sprintf('%s:%s', self::REDIS_KEY_PICTURE_FILENAME_FROM_ALIAS, $data['alias']));
+        if (!empty($filenameForNewAlias)) {
+            $errors[] = _('This alias is already in used');
+            return $errors;
+        }
+        $oldAlias = $redis->get(sprintf('%s:%s', self::REDIS_KEY_PICTURE_ALIAS, $data['filename']));
+        if (!empty($oldAlias)) {
+            $redis->del(sprintf('%s:%s', self::REDIS_KEY_PICTURE_FILENAME_FROM_ALIAS, $oldAlias));
+        }
+        $redis->set(sprintf('%s:%s', self::REDIS_KEY_PICTURE_ALIAS, $data['filename']), $data['alias']);
+        $redis->set(sprintf('%s:%s', self::REDIS_KEY_PICTURE_FILENAME_FROM_ALIAS, $data['alias']), $data['filename']);
+        return $errors;
+    }
+
+    public function getAllAliases()
+    {
+        try {
+            $redis = $this->setupRedisWithException();
+        } catch (Exception $e) {
+            $redis = null;
+            return null;
+        }
+        $allKeys = $redis->keys(sprintf('%s:*', self::REDIS_KEY_PICTURE_ALIAS));
+        $pipeline = $redis->pipeline();
+        foreach ($allKeys as $key) {
+            $pipeline->get($key);
+        }
+        $allAliases = $pipeline->exec();
+        return $allAliases;
+    }
+
+    public function getAliasForImage($filename)
+    {
+        if (!isset($this->redis)) {
+            try {
+                $this->redis = $this->setupRedisWithException();
+            } catch (Exception $e) {
+                $this->redis = null;
+                return null;
+            }
+        }
+        return $this->redis->get(sprintf('%s:%s', self::REDIS_KEY_PICTURE_ALIAS, $filename));
+    }
+
+    public function getImageFromAlias($alias)
+    {
+        if (!isset($this->redis)) {
+            try {
+                $this->redis = $this->setupRedisWithException();
+            } catch (Exception $e) {
+                $this->redis = null;
+                return null;
+            }
+        }
+        return $this->redis->get(sprintf('%s:%s', self::REDIS_KEY_PICTURE_FILENAME_FROM_ALIAS, $alias));
     }
 }

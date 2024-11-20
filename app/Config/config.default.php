@@ -22,6 +22,7 @@ $config = array(
         //'auth'                            => array('ShibbAuth.ApacheShibb'),
         //'auth'                            => array('AadAuth.AadAuthenticate'),
         //'auth'                            => array('LinOTPAuth.LinOTP'),
+        //'auth'                            => array('LdapAuth.Ldap'),
     ),
     'MISP' => array(
         'baseurl'                        => '',

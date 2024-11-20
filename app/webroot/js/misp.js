@@ -152,7 +152,7 @@ function genericPopup(url, popupTarget, callback) {
 }
 
 function screenshotPopup(url, title) {
-    if (!url.startsWith('data:image/')) {
+    if (!url.startsWith('data:image/') && url.split('.').pop() != 'png') {
         url = url.slice(0, -1);
     }
     url = $('<div>').text(url).html();
@@ -797,6 +797,37 @@ function quickSubmitTagCollectionTagForm(selected_tag_ids, addData) {
     });
 }
 
+function quickSubmitEventReportTagForm(selected_tag_ids, addData) {
+    var eventreport_id = addData.id;
+    var localFlag = '';
+    if (undefined != addData['local'] && addData['local']) {
+        localFlag = '/local:1';
+    }
+    var url = baseurl + "/event_reports/addTag/" + eventreport_id + localFlag;
+    fetchFormDataAjax(url, function(formData) {
+        var $formData = $(formData);
+        $formData.find('#EventReportTag').val(JSON.stringify(selected_tag_ids));
+        xhr({
+            data: $formData.serialize(),
+            success:function (data) {
+                handleGenericAjaxResponse(data);
+                reloadEventReportTable();
+            },
+            error:function() {
+                showMessage('fail', 'Could not add tag.');
+                // refreshTagCollectionRow(eventreport_id);
+            },
+            complete:function() {
+                $("#popover_form").fadeOut();
+                $("#gray_out").fadeOut();
+                $(".loading").hide();
+            },
+            type:"post",
+            url: url
+        });
+    });
+}
+
 function refreshTagCollectionRow(tag_collection_id) {
     $.ajax({
         type:"get",
@@ -827,6 +858,8 @@ function modifyTagRelationship() {
                    var attribute_id = data.data.attribute_id;
                    loadAttributeTags(attribute_id);
                    loadGalaxies(attribute_id, 'attribute');
+               } else if ("event_report_id" in data.data) {
+                    reloadEventReportTable()
                } else {
                    var event_id = data.data.event_id;
                    loadEventTags(event_id);
@@ -1203,6 +1236,8 @@ function removeObjectTag(context, object, tag) {
                 loadAttributeTags(object);
             } else if (context == 'tag_collection') {
                 refreshTagCollectionRow(object);
+            } else if (context == 'event_report') {
+                reloadEventReportTable();
             } else {
                 loadEventTags(object);
             }
@@ -2018,7 +2053,7 @@ function openModal(heading, body, footer, modal_option, css_container, css_body,
     }
     modal_html += '</div>';
     $('body').append($(modal_html));
-    $('#'+modal_id).modal(modal_option !== undefined ? modal_option : {});
+    return $('#'+modal_id).modal(modal_option !== undefined ? modal_option : {});
 }
 
 function resizePopoverBody() {

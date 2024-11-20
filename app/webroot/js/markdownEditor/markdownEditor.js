@@ -13,6 +13,20 @@ var defaultMode = 'viewer'
 var currentMode
 var splitEdit = true
 var noEditorScroll = false // Necessary as onscroll cannot be unbound from CM
+
+var markdownDisabledParsingRules = ['link', 'image']
+var markdownEnabledParsingRules = []
+
+if (markdownOverrideEnabledParsingRules && markdownOverrideEnabledParsingRules.length > 0) {
+    markdownOverrideEnabledParsingRules.forEach((rule) => {
+        markdownEnabledParsingRules.push(rule)
+        const ind = markdownDisabledParsingRules.indexOf(rule)
+        if (ind !== -1) {
+            markdownDisabledParsingRules.splice(ind, 1);
+        }
+    })
+}
+
 $(document).ready(function() {
     $splitContainer = $('.split-container')
     $editorContainer = $('#editor-container')
@@ -128,7 +142,8 @@ function initMarkdownIt() {
         }
     }
     md = window.markdownit('default', mdOptions);
-    md.disable([ 'link', 'image' ])
+    // md.disable([ 'link', 'image' ])
+    md.disable(markdownDisabledParsingRules)
     md.renderer.rules.table_open = function () {
         return '<table class="table table-striped">\n';
     };
@@ -215,6 +230,11 @@ function initCodeMirror() {
             cm.showHint()
         }
     });
+    if (pasteImg !== undefined) {
+        cm.on("paste", function(cm, event) {
+            pasteImg(cm, event)
+        })
+    }
     checkIfFullScreenEnabled()
 }
 
@@ -465,9 +485,9 @@ function cancelEdit() {
     setMode('viewer')
 }
 
-function downloadMarkdown(type) {
+function downloadMarkdown(type, report_id) {
     var content, fileType, baseName, extension
-    if (type == 'pdf') {
+    if (type == 'pdf-print') {
         if (currentMode != 'viewer' && currentMode != 'splitscreen') {
             setMode('viewer')
             setTimeout(function (){ // let the parser render the document
@@ -481,6 +501,10 @@ function downloadMarkdown(type) {
             }
         }
         return
+    } else if (type == 'pdf-module') {
+        var url = '/eventReports/downloadAsPDF/' + report_id
+        var name = 'event-report-' + (new Date()).getTime()
+        return downloadFile(url, name)
     } else if (type == 'text') {
         content = getEditorData()
         baseName = 'event-report-' + (new Date()).getTime()
@@ -502,12 +526,23 @@ function downloadMarkdown(type) {
     saveAs(blob, filename)
 }
 
+function downloadFile(uri, name) {
+    var a = document.createElement('a');
+    a.setAttribute('href', uri);
+    a.setAttribute('download', name);
+    var aj = $(a);
+    aj.appendTo('body');
+    aj[0].click();
+    aj.remove();
+}
+
 function showHelp() {
     $('#genericModal.markdown-modal-helper').modal();
 }
 
 function renderMarkdown() {
     var toRender = getEditorData()
+    toRender = injectTemplateVariables(toRender)
     var result = md.render(toRender)
     scrollMap = null
     $viewer.html(result)
@@ -519,6 +554,19 @@ function doRender() {
         clearTimeout(renderTimer);
         renderTimer = setTimeout(renderMarkdown, debounceDelay);
     }
+}
+
+function injectTemplateVariables(text) {
+    var newText = text
+    for (var varName in templateVariablesProxy) {
+        if (templateVariablesProxy.hasOwnProperty(varName)) {
+            var varSyntax = '{{\\s*' + varName + '\\s*}}'
+            var replacementValue = templateVariablesProxy[varName]
+            var regex = new RegExp(varSyntax, 'g');
+            newText = newText.replace(regex, replacementValue);
+        }
+    }
+    return newText;
 }
 
 function registerListener() {

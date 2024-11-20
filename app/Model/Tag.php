@@ -67,6 +67,9 @@ class Tag extends AppModel
         'GalaxyClusterRelationTag' => array(
             'dependent' => true
         ),
+        'EventReportTag' => array(
+            'dependent' => true
+        ),
     );
 
     public $belongsTo = array(
@@ -80,8 +83,9 @@ class Tag extends AppModel
         )
     );
 
-    const RE_GALAXY = '/misp-galaxy:[^:="]+="[^:="]+/i';
+    const RE_GALAXY = '/misp-galaxy:[^:="]+="[^:="]+"/i';
     const RE_CUSTOM_GALAXY = '/misp-galaxy:[^:="]+="[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}"/i';
+    const RE_CUSTOM_CLUSTER_FROM_DEFAULT_GALAXY = '/misp-galaxy:(?:(?![a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}).)+="[^:="]+"/i';
     private $tagOverrides = false;
 
     public function beforeValidate($options = array())
