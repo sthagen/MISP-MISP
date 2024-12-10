@@ -1345,7 +1345,7 @@ installCore () {
   if [[ ! -d ${PATH_TO_MISP} ]]; then
     sudo mkdir ${PATH_TO_MISP}
     sudo chown ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}
-    false; while [[ $? -ne 0 ]]; do checkAptLock; ${SUDO_WWW} git clone https://github.com/MISP/MISP.git ${PATH_TO_MISP}; done
+    false; while [[ $? -ne 0 ]]; do checkAptLock; ${SUDO_WWW} git clone https://github.com/MISP/MISP.git -b 2.4 ${PATH_TO_MISP}; done
     false; while [[ $? -ne 0 ]]; do checkAptLock; ${SUDO_WWW} git -C ${PATH_TO_MISP} submodule update --progress --init --recursive; done
     # Make git ignore filesystem permission differences for submodules
     ${SUDO_WWW} git -C ${PATH_TO_MISP} submodule foreach --recursive git config core.filemode false
@@ -2303,7 +2303,7 @@ installCoreRHEL7 () {
   sudo mkdir -p $(dirname $PATH_TO_MISP)
   sudo chown $WWW_USER:$WWW_USER $(dirname $PATH_TO_MISP)
   cd $(dirname $PATH_TO_MISP)
-  $SUDO_WWW git clone https://github.com/MISP/MISP.git
+  $SUDO_WWW git clone https://github.com/MISP/MISP.git -b 2.4
   cd $PATH_TO_MISP
 
   # Fetch submodules
@@ -2417,7 +2417,7 @@ installCoreRHEL8 () {
   sudo mkdir -p $(dirname $PATH_TO_MISP)
   sudo chown $WWW_USER:$WWW_USER $(dirname $PATH_TO_MISP)
   cd $(dirname $PATH_TO_MISP)
-  $SUDO_WWW git clone https://github.com/MISP/MISP.git
+  $SUDO_WWW git clone https://github.com/MISP/MISP.git -b 2.4
   cd $PATH_TO_MISP
 
   # Fetch submodules
@@ -3220,7 +3220,7 @@ installMISPonKali () {
   sudo mkdir ${PATH_TO_MISP}
   sudo chown ${WWW_USER}:${WWW_USER} ${PATH_TO_MISP}
   cd ${PATH_TO_MISP}
-  false; while [[ $? -ne 0 ]]; do ${SUDO_WWW} git clone https://github.com/MISP/MISP.git ${PATH_TO_MISP}; done
+  false; while [[ $? -ne 0 ]]; do ${SUDO_WWW} git clone https://github.com/MISP/MISP.git -b 2.4 ${PATH_TO_MISP}; done
 
   ${SUDO_WWW} git config core.filemode false
 
