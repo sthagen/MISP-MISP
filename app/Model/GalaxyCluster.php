@@ -632,7 +632,7 @@ class GalaxyCluster extends AppModel
             ),
             'org_id' => $clusterOrgcId['GalaxyCluster']['orgc_id']
         );
-        $cluster = $this->fetchGalaxyClusters($elevatedUser, array('minimal' => true, 'conditions' => array('id' => $clusterId)), $full=false);
+        $cluster = $this->fetchGalaxyClusters($elevatedUser, array('minimal' => true, 'conditions' => array("{$this->alias}.id" => $clusterId)), $full=false);
         if (empty($cluster)) {
             return true;
         }

@@ -57,7 +57,8 @@ class UsersController extends AppController
             'contain' => array(
                 'UserSetting',
                 'Role',
-                'Organisation'
+                'Organisation',
+                'Server'
             )
         ));
         if (empty($user)) {
@@ -94,7 +95,7 @@ class UsersController extends AppController
         $user['User']['password'] = '*****';
         $user['User']['totp'] = '*****';
         $temp = [];
-        $objectsToInclude = array('User', 'Role', 'UserSetting', 'Organisation');
+        $objectsToInclude = array('User', 'Role', 'UserSetting', 'Organisation', 'Server');
         foreach ($objectsToInclude as $objectToInclude) {
             if (isset($user[$objectToInclude])) {
                 $temp[$objectToInclude] = $user[$objectToInclude];
@@ -481,7 +482,8 @@ class UsersController extends AppController
                 ),
                 'contain' => array(
                     'Organisation' => array('id', 'name'),
-                    'Role' => array('id', 'name', 'perm_auth', 'perm_site_admin', 'perm_admin')
+                    'Role' => array('id', 'name', 'perm_auth', 'perm_site_admin', 'perm_admin'),
+                    'Server' => ['id', 'name'],
                 )
             ));
             if (!$this->_isSiteAdmin()) {
@@ -503,6 +505,7 @@ class UsersController extends AppController
             return $this->RestResponse->viewData($users, $this->response->type());
         }
 
+        $this->paginate['contain']['Server'] = ['id', 'name'];
         $this->set('urlparams', $urlParams);
         $this->set('passedArgsArray', $passedArgsArray);
         $this->set('periodic_notifications', $this->User::PERIODIC_NOTIFICATIONS);
@@ -602,7 +605,8 @@ class UsersController extends AppController
             'contain' => [
                 'UserSetting',
                 'Role',
-                'Organisation'
+                'Organisation',
+                'Server',
             ]
         ));
         if (empty($user)) {
@@ -1278,8 +1282,10 @@ class UsersController extends AppController
     private function _postlogin()
     {
         $authUser = $this->Auth->user();
-        $this->User->extralog($authUser, "login");
-
+        if (empty($authUser['disabled'])) {
+            $this->User->extralog($authUser, "login");
+        }
+        
         $this->User->Behaviors->disable('SysLogLogable.SysLogLogable');
         $user = $this->User->find('first', array(
             'conditions' => array(
@@ -1289,7 +1295,9 @@ class UsersController extends AppController
             'recursive' => -1
         ));
         // update login timestamp and welcome user
-        $this->User->updateLoginTimes($user['User']);
+        if (empty($authUser['disabled'])) {
+            $this->User->updateLoginTimes($user['User']);
+        }
         $this->User->Behaviors->enable('SysLogLogable.SysLogLogable');
 
         $lastUserLogin = $user['User']['last_login'];
@@ -2086,6 +2094,10 @@ class UsersController extends AppController
         $stats['attribute_count'] = $this->User->Event->Attribute->find('count', array('conditions' => array('Attribute.deleted' => 0), 'recursive' => -1));
         $stats['attribute_count_month'] = $this->User->Event->Attribute->find('count', array('conditions' => array('Attribute.timestamp >' => $this_month, 'Attribute.deleted' => 0), 'recursive' => -1));
         $stats['attributes_per_event'] = $stats['event_count'] != 0 ? round($stats['attribute_count'] / $stats['event_count']) : 0;
+
+        $stats['object_count'] = $this->User->Event->Object->find('count', array('conditions' => array('Object.deleted' => 0), 'recursive' => -1));
+        $stats['object_count_month'] = $this->User->Event->Object->find('count', array('conditions' => array('Object.timestamp >' => $this_month, 'Object.deleted' => 0), 'recursive' => -1));
+        $stats['objects_per_event'] = $stats['event_count'] != 0 ? round($stats['object_count'] / $stats['event_count']) : 0;
 
         $stats['correlation_count'] = $this->User->Event->Attribute->Correlation->find('count', array('recursive' => -1));
 

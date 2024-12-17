@@ -158,6 +158,7 @@ function insertMISPElementToolbarButtons() {
 /* Pasting Picture */
 
 function pasteImg(cm, event) {
+    const isUserSiteAdmin = isSiteAdmin ? isSiteAdmin : false;
     const dT = event.clipboardData || window.clipboardData;
     let fileList = dT.files;
     // For now, only allow pasting one picture at a time
@@ -170,9 +171,15 @@ function pasteImg(cm, event) {
     if (fileList.length > 0) { // pasting contains a picture to be uploaded
         event.preventDefault();
         const $picture = $('<div style="display: flex; justify-content: center; align-items: center; margin: 1em; border: 1px solid #aaaaaa99;">').append($('<img id="pastedPicturePreview">'))
+        const $checkbox = $('<input type="checkbox" name="saveAsAttachment" value="1" id="checkboxSaveAsAttachment" checked="checked" onclick="toggleAttributeFormVisibility()">')
+        const $checkboxLabel = $('<label for="checkboxSaveAsAttachment">').text('Save the picture as an attachment (create an Attribute).')
+        if (!isUserSiteAdmin) {
+            $checkbox.prop('disabled', true)
+            $checkboxLabel.css('cursor', 'not-allowed').title('You must be a site-admin to use local instance picture.')
+        }
         const $checkboxContainer = $('<div>').addClass('checkbox').append(
-            $('<input type="checkbox" name="saveAsAttachment" value="1" id="checkboxSaveAsAttachment" checked="checked" onclick="toggleAttributeFormVisibility()">'),
-            $('<label for="checkboxSaveAsAttachment">').text('Save the picture as an attachment (create an Attribute).'),
+            $checkbox,
+            $checkboxLabel,
         )
         const $commentContainer = $('<div class=" clear"><label for="AttributeComment">Contextual Comment</label><input name="data[Attribute][comment]" class="input span6 form-control" type="text" id="AttributeComment"></div>')
         const $distributionContainer = $('<div class="select"></div>').append(
@@ -185,11 +192,16 @@ function pasteImg(cm, event) {
                 $distributionContainer,
                 $commentContainer,
             )
+        const $localImageContainer = $('<div id="localImageContainer" class="alert alert-info" style="display: none">').append(
+            $('<b>').text('Saved as a local instance picture: '),
+            $('<span>').text('Note that these pictures are not synchronized.')
+        )
         const $modalBody = $('<div>').append(
             $('<p>').text('You\'re about to include a picture in your report. Would you like to add it as an attachment to the event (This will create an attachment Attribute) or should it be a save as a local image (this will not be synchronized).'),
             $picture,
             $('<div>').append($checkboxContainer),
-            $attributeFormContainer
+            $attributeFormContainer,
+            $localImageContainer
         )
         currentFileList = fileList
         var $confirmButton = $('<a href="#" class="btn btn-primary" onclick="confirmPictureSubmission()">Upload picture</a>')
@@ -208,6 +220,7 @@ function pasteImg(cm, event) {
 
 function toggleAttributeFormVisibility() {
     $('#attributeFormContainer').toggle($('#checkboxSaveAsAttachment').prop('checked'))
+    $('#localImageContainer').toggle(!$('#checkboxSaveAsAttachment').prop('checked'))
 }
 
 function dismissPictureSubmissionModal() {
@@ -1545,8 +1558,8 @@ function sendToLLM() {
 }
 
 function configureTemplateVariable() {
-    var url = baseurl + '/eventReports/configureTemplateVariable'
-    openGenericModal(url)
+    var url = baseurl + '/eventReportTemplateVariables/index'
+    window.open(url)
 }
 
 /**

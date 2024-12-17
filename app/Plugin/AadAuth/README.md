@@ -119,6 +119,7 @@ Scroll down to near the bottom of the page and add in the following configuratio
     'misp_orgadmin' => 'Misp Org Admins', // The AD group for MISP administrators
     'misp_siteadmin' => 'Misp Site Admins', // The AD group for MISP site administrators
     'check_ad_groups' => true, // Should we check if the user belongs to one of the above AD groups?
+    'auth_property_name' => 'userPrincipalName' // The name of the property to use for authentication. The value must be either 'mail' or 'userPrincipalName'
   ),
 ```
 

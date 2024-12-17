@@ -132,6 +132,12 @@ class MispObject extends AppModel
 
     private $__objectDuplicationCheckCache = [];
 
+    public function __construct($id = false, $table = null, $ds = null) {
+        parent::__construct();
+        $this->schema();
+        $this->_schema['distribution']['default'] = Configure::read('MISP.default_object_distribution') ?? 5;
+    }
+
     public function buildFilterConditions(&$params)
     {
         $conditions = [];
@@ -295,9 +301,6 @@ class MispObject extends AppModel
         }
         if (!isset($object['distribution']) || $object['distribution'] != 4) {
             $object['sharing_group_id'] = 0;
-        }
-        if (!isset($object['distribution'])) {
-            $object['distribution'] = is_null(Configure::read('MISP.default_object_distribution')) ? 5 : Configure::read('MISP.default_object_distribution');
         }
         return true;
     }

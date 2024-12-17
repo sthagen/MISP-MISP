@@ -30,7 +30,7 @@ class LdapAuthenticate extends BaseAuthenticate
             'ldapDn' => Configure::read('LdapAuth.ldapDn'),
             'ldapReaderUser' => Configure::read('LdapAuth.ldapReaderUser'),
             'ldapReaderPassword' => Configure::read('LdapAuth.ldapReaderPassword'),
-            'ldapSearchFilter' => Configure::read('LdapAuth.ldapSearchFilter'),
+            'ldapSearchFilter' => Configure::read('LdapAuth.ldapSearchFilter') ?? '',
             'ldapSearchAttribute' => Configure::read('LdapAuth.ldapSearchAttribute') ?? 'mail',
             'ldapEmailField' => Configure::read('LdapAuth.ldapEmailField') ?? ['mail'],
             'ldapNetworkTimeout' => Configure::read('LdapAuth.ldapNetworkTimeout') ?? -1,
@@ -38,9 +38,14 @@ class LdapAuthenticate extends BaseAuthenticate
             'ldapAllowReferrals' => Configure::read('LdapAuth.ldapAllowReferrals') ?? true,
             'starttls' => Configure::read('LdapAuth.starttls') ?? false,
             'mixedAuth' => Configure::read('LdapAuth.mixedAuth') ?? true,
-            'ldapDefaultOrgId' => Configure::read('LdapAuth.ldapDefaultOrgId'),
+            'ldapDefaultOrgId' => Configure::read('LdapAuth.ldapDefaultOrgId') ?? 1,
             'ldapDefaultRoleId' => Configure::read('LdapAuth.ldapDefaultRoleId') ?? 3,
             'updateUser' => Configure::read('LdapAuth.updateUser') ?? true,
+            'debug' => Configure::read('LdapAuth.debug') ?? false,
+            'ldapTlsRequireCert' => Configure::read('LdapAuth.ldapTlsRequireCert') ?? LDAP_OPT_X_TLS_DEMAND,
+            'ldapTlsCustomCaCert' => Configure::read('LdapAuth.ldapTlsCustomCaCert') ?? false,
+            'ldapTlsCrlCheck' => Configure::read('LdapAuth.ldapTlsCrlCheck') ?? LDAP_OPT_X_TLS_CRL_PEER,
+            'ldapTlsProtocolMin' => Configure::read('LdapAuth.ldapTlsProtocolMin') ?? LDAP_OPT_X_TLS_PROTOCOL_TLS1_2,
         ];
     }
 
@@ -54,8 +59,24 @@ class LdapAuthenticate extends BaseAuthenticate
 
     private function ldapConnect()
     {
+        if (self::$conf['debug']) {
+            ldap_set_option(null, LDAP_OPT_DEBUG_LEVEL, 7);
+        }
+
         // LDAP connection
         ldap_set_option(NULL, LDAP_OPT_NETWORK_TIMEOUT, self::$conf['ldapNetworkTimeout']);
+
+        // SSL/TLS configuration
+        if (self::$conf['ldapTlsCustomCaCert']) {
+            ldap_set_option(null, LDAP_OPT_X_TLS_CACERTDIR, dirname(self::$conf['ldapTlsCustomCaCert']));
+            ldap_set_option(null, LDAP_OPT_X_TLS_CACERTFILE, self::$conf['ldapTlsCustomCaCert']);
+        }
+
+        ldap_set_option(null, LDAP_OPT_X_TLS_REQUIRE_CERT, self::$conf['ldapTlsRequireCert']);
+        ldap_set_option(null, LDAP_OPT_X_TLS_CRLCHECK, self::$conf['ldapTlsCrlCheck']);
+        ldap_set_option(null, LDAP_OPT_X_TLS_PROTOCOL_MIN, self::$conf['ldapTlsProtocolMin']);
+
+        // Connect to LDAP server
         $ldapconn = ldap_connect(self::$conf['ldapServer']);
 
         if (!$ldapconn) {
@@ -123,7 +144,7 @@ class LdapAuthenticate extends BaseAuthenticate
             $filter =  '(&' . self::$conf['ldapSearchFilter'] . $filter . ')';
         }
 
-        $ldapUser = ldap_search($ldapconn, self::$conf['ldapDn'], $filter, ['mail']);
+        $ldapUser = ldap_search($ldapconn, self::$conf['ldapDn'], $filter, self::$conf['ldapEmailField']);
 
         if (!$ldapUser) {
             CakeLog::error("[LdapAuth] LDAP user search failed: " . ldap_error($ldapconn));
@@ -157,6 +178,12 @@ class LdapAuthenticate extends BaseAuthenticate
         $this->settings['fields'] = ["username" => "email"];
 
         $ldapconn = $this->ldapConnect();
+
+        $ldapbind = ldap_bind($ldapconn, self::$conf['ldapReaderUser'],  self::$conf['ldapReaderPassword']);
+        if (!$ldapbind) {
+            CakeLog::error("[LdapAuth] Invalid LDAP reader user credentials: " . ldap_error($ldapconn));
+            throw new UnauthorizedException(__('User could not be authenticated by LDAP.'));
+        }
 
         $ldapUserData = $this->getLdapUserData($ldapconn, $email);
 

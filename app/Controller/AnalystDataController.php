@@ -274,7 +274,7 @@ class AnalystDataController extends AppController
         if (!empty($filters['orgc_name'])) {
             $orgcNames = $filters['orgc_name'];
             if (!is_array($orgcNames)) {
-                $orgcName = [$orgcNames];
+                $orgcNames = [$orgcNames];
             }
             $filterName = 'orgc_uuid';
             foreach ($orgcNames as $orgcName) {
@@ -291,6 +291,10 @@ class AnalystDataController extends AppController
                     }
                     $options['OR'][] = [$filterName => $orgc['uuid']];
                 }
+            }
+
+            if (empty($options)) {
+                return $this->RestResponse->viewData([], $this->response->type());
             }
         }
         $allData = $this->AnalystData->indexMinimal($this->Auth->user(), $options);

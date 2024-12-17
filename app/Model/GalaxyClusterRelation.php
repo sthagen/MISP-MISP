@@ -428,10 +428,10 @@ class GalaxyClusterRelation extends AppModel
             } else {
                 $options = array(
                     'conditions' => array(
-                        'uuid' => $relation['GalaxyClusterRelation']['referenced_galaxy_cluster_uuid'],
+                        "{$this->SourceCluster->alias}.uuid" => $relation['GalaxyClusterRelation']['referenced_galaxy_cluster_uuid'],
                     ),
                     'fields' => array(
-                        'id', 'uuid',
+                        "{$this->SourceCluster->alias}.id", "{$this->SourceCluster->alias}.uuid",
                     )
                 );
                 $referencedCluster = $this->SourceCluster->fetchGalaxyClusters($user, $options);

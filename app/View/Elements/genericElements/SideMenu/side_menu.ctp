@@ -527,6 +527,26 @@ $divider = '<li class="divider"></li>';
                             ));
                         }
                     }
+                    echo $divider;
+                    echo $this->element('/genericElements/SideMenu/side_menu_link', array(
+                        'element_id' => 'template_variable_index',
+                        'url' => '/EventReportTemplateVariables/index',
+                        'text' => __('List Template Variables')
+                    ));
+                    if ($isSiteAdmin) {
+                        echo $this->element('/genericElements/SideMenu/side_menu_link', array(
+                            'element_id' => 'template_variable_add',
+                            'url' => '/EventReportTemplateVariables/add',
+                            'text' => __('Add Template Variable')
+                        ));
+                        if ($menuItem === 'edit') {
+                            echo $this->element('/genericElements/SideMenu/side_menu_link', array(
+                                'element_id' => 'template_variable_edit',
+                                'url' => '/EventReportTemplateVariables/edit',
+                                'text' => __('Edit Template Variable')
+                            ));
+                        }
+                    }
                     break;
 
                 case 'regexp':

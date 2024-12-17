@@ -104,6 +104,7 @@ echo $this->element('genericElements/assetLoader', array(
         'codemirror/addons/lint',
         'codemirror/addons/jsonlint',
         'codemirror/addons/json-lint',
+        'codemirror/addons/placeholder',
     ),
     'css' => array(
         'codemirror',

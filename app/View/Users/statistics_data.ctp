@@ -23,6 +23,13 @@
         </dd>
         <dt><?php echo __('Attributes / event'); ?></dt>
         <dd><?php echo h($stats['attributes_per_event']); ?>&nbsp;</dd>
+        <dt><?php echo __('Objects'); ?></dt>
+        <dd><?php echo h($stats['object_count']);
+            if ($stats['object_count_month']) echo ' <span style="color:green">(+' . h($stats['object_count_month']) . ')</span>&nbsp;';
+            else echo ' <span style="color:red">(0)</span>&nbsp;';?>
+        </dd>
+        <dt><?php echo __('Objects / event'); ?></dt>
+        <dd><?php echo h($stats['objects_per_event']); ?>&nbsp;</dd>
         <dt><?php echo __('Correlations found'); ?></dt>
         <dd><?php echo h($stats['correlation_count']); ?>&nbsp;</dd>
         <dt><?php echo __('Proposals active'); ?></dt>

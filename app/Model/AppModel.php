@@ -92,7 +92,7 @@ class AppModel extends Model
         111 => false, 112 => false, 113 => true, 114 => false, 115 => false, 116 => false,
         117 => false, 118 => false, 119 => false, 120 => false, 121 => false, 122 => false,
         123 => false, 124 => false, 125 => false, 126 => false, 127 => false, 128 => false,
-        129 => false, 130 => false, 131 => false, 132 => false,
+        129 => false, 130 => false, 131 => false, 132 => false, 133 => false, 134 => true
     );
 
     const ADVANCED_UPDATES_DESCRIPTION = array(
@@ -2262,6 +2262,19 @@ class AppModel extends Model
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
                 $indexArray[] = array('event_report_tags', 'event_report_id');
                 $indexArray[] = array('event_report_tags', 'tag_id');
+                break;
+            case 133:
+                $sqlArray[] = "CREATE TABLE IF NOT EXISTS `event_report_template_variables` (
+                    `id` int(11) NOT NULL AUTO_INCREMENT,
+                    `name` varchar(191) NOT NULL,
+                    `value` text,
+                    PRIMARY KEY (`id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8;";
+                $indexArray[] = array('event_report_template_variables', 'name');
+                break;
+            case 134:
+                $sqlArray[] = "ALTER TABLE `roles` ADD `perm_server_sign` tinyint(1) NOT NULL DEFAULT 0;";
+                $sqlArray[] = "UPDATE `roles` SET `perm_server_sign`=1 WHERE `perm_site_admin` = 1;";
                 break;
             case 'fixNonEmptySharingGroupID':
                 $sqlArray[] = 'UPDATE `events` SET `sharing_group_id` = 0 WHERE `distribution` != 4;';

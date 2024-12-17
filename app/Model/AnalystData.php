@@ -112,6 +112,10 @@ class AnalystData extends AppModel
         ]);
         $this->Org = ClassRegistry::init('Organisation');
         $this->Orgc = ClassRegistry::init('Organisation');
+        if (in_array($this->alias, self::ANALYST_DATA_TYPES)) {
+            $this->schema();
+            $this->_schema['distribution']['default'] = Configure::read('MISP.default_analyst_data_distribution') ?? 1;
+        }
     }
 
     public function afterFind($results, $primary = false)
@@ -182,9 +186,6 @@ class AnalystData extends AppModel
         $this->data[$this->current_type]['created'] = (new DateTime($this->data[$this->current_type]['created'], new DateTimeZone('UTC')))->format('Y-m-d H:i:s');
 
         if (empty($this->data[$this->current_type]['id'])) {
-            if (!isset($this->data[$this->current_type]['distribution'])) {
-                $this->data[$this->current_type]['distribution'] = Configure::read('MISP.default_event_distribution'); // use default event distribution
-            }
             if ($this->data[$this->current_type]['distribution'] != 4) {
                 $this->data[$this->current_type]['sharing_group_id'] = null;
             }

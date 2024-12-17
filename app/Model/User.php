@@ -198,7 +198,7 @@ class User extends AppModel
             'className' => 'Server',
             'foreignKey' => 'server_id',
             'conditions' => '',
-            'fields' => array('Server.id', 'Server.url', 'Server.push_rules'),
+            'fields' => array('Server.id', 'Server.name', 'Server.url', 'Server.push_rules'),
             'order' => ''
         )
     );

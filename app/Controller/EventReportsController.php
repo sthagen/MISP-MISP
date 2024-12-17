@@ -184,7 +184,10 @@ class EventReportsController extends AppController
             if ($id === false) {
                 throw new NotFoundException(__('Invalid report'));
             }
-            $report = $this->EventReport->fetchIfAuthorized($this->Auth->user(), $id, 'edit', $throwErrors=true, $full=false);
+            $report = $this->EventReport->fetchIfAuthorized($this->Auth->user(), $id, 'view', $throwErrors=true, $full=false);
+            if (!$this->__canModifyTag($report, $local)) {
+                return new CakeResponse(array('body'=> json_encode(array('saved' => false, 'errors' => 'You don\'t have permission to do that.')), 'status'=>200, 'type' => 'json'));
+            }
             $this->set('local', $local);
             $this->set('object_id', $id);
             $this->set('scope', 'EventReport');
@@ -192,7 +195,10 @@ class EventReportsController extends AppController
             $this->autoRender = false;
             $this->render('/Events/add_tag');
         } else {
-            $report = $this->EventReport->fetchIfAuthorized($this->Auth->user(), $id, 'edit', $throwErrors=true, $full=false);
+            $report = $this->EventReport->fetchIfAuthorized($this->Auth->user(), $id, 'view', $throwErrors=true, $full=false);
+            if (!$this->__canModifyTag($report, $local)) {
+                return new CakeResponse(array('body'=> json_encode(array('saved' => false, 'errors' => 'You don\'t have permission to do that.')), 'status'=>200, 'type' => 'json'));
+            }
             if ($tag_id === false) {
                 if (!isset($this->request->data['EventReport']['tag'])) {
                     throw new NotFoundException(__('Invalid tag'));
@@ -256,7 +262,7 @@ class EventReportsController extends AppController
 
     public function removeTag($id = false, $tag_id = false, $galaxy = false)
     {
-        $report = $this->EventReport->fetchIfAuthorized($this->Auth->user(), $id, 'edit', true, false);
+        $report = $this->EventReport->fetchIfAuthorized($this->Auth->user(), $id, 'view', $throwErrors=true, $full=false);
         if (!$this->request->is('post')) {
             $reportTag = $this->EventReport->EventReportTag->find('first', array(
                 'conditions' => array(
@@ -477,7 +483,11 @@ class EventReportsController extends AppController
         if (!$this->request->is('ajax') && !$this->_isRest()) {
             throw new MethodNotAllowedException(__('This function can only be reached via AJAX and via the API.'));
         }
-        $fetcherModule = $this->EventReport->isFetchURLModuleEnabled();
+        $errors = [];
+        $fetcherModule = $this->EventReport->isFetchURLModuleEnabledAndAllowed($this->Auth->user());
+        if (empty($fetcherModule)) {
+            $errors[] = __('Could not fetch report from URL. Fetcher module not enabled or could not download the page');
+        }
         if ($this->request->is('post')) {
             if (empty($this->data['EventReport'])) {
                 $this->data = ['EventReport' => $this->data];
@@ -494,22 +504,24 @@ class EventReportsController extends AppController
                     $format = $parsed_format;
                 }
             }
-            $content = $this->EventReport->downloadMarkdownFromURL($event_id, $url, $format);
-
-            $errors = [];
-            if (!empty($content)) {
-                $report = [
-                    'name' => __('Report from - %s (%s)', $url, time()),
-                    'distribution' => 5,
-                    'content' => $content
-                ];
-                $errors = $this->EventReport->addReport($this->Auth->user(), $report, $event_id);
-            } else {
-                $errors[] = __('Could not fetch report from URL. Fetcher module not enabled or could not download the page');
+            $content = null;
+            if (empty($errors)) {
+                $content = $this->EventReport->downloadMarkdownFromURL($event_id, $url, $format);
+                if (!empty($content)) {
+                    $report = [
+                        'name' => __('Report from - %s (%s)', $url, time()),
+                        'distribution' => 5,
+                        'content' => $content
+                    ];
+                    $errors = $this->EventReport->addReport($this->Auth->user(), $report, $event_id);
+                } else {
+                    $errors[] = __('Could not fetch report from URL. Fetcher module not enabled or could not download the page');
+                }
             }
             $redirectTarget = array('controller' => 'events', 'action' => 'view', $event_id);
             if (!empty($errors)) {
-                return $this->__getFailResponseBasedOnContext($errors, array(), 'addFromURL', $this->EventReport->id, $redirectTarget);
+                $event_report_id = empty($this->EventReport->id) ? 0 : $this->EventReport->id;
+                return $this->__getFailResponseBasedOnContext($errors, array(), 'addFromURL', $event_report_id, $redirectTarget);
             } else {
                 $successMessage = __('Report downloaded and created');
                 $report = $this->EventReport->simpleFetchById($this->Auth->user(), $this->EventReport->id);
@@ -595,8 +607,13 @@ class EventReportsController extends AppController
             if ($this->request->is('post')) {
                 $this->loadModel('Attribute');
                 $picture = $this->request->data['EventReport']['picture'];
-                $saveAsAttachment = !empty($this->request->data['EventReport']['save_as_attachment']);
                 $saveAsAttachmentConfig = false;
+                if ($this->Auth->user()['Role']['perm_site_admin']) {
+                    $saveAsAttachment = !empty($this->request->data['EventReport']['save_as_attachment']);
+                } else {
+                    $saveAsAttachment = true;
+                    $saveAsAttachmentConfig = [];
+                }
                 if ($saveAsAttachment) {
                     $saveAsAttachmentConfig['comment'] = $this->request->data['EventReport']['comment'] ?? __('Imported via Event Report');
                     $saveAsAttachmentConfig['distribution'] = $this->request->data['EventReport']['distribution'] ?? $this->Attribute->defaultDistribution();
@@ -672,46 +689,13 @@ class EventReportsController extends AppController
         if ($this->request->is('post')) {
             $errors = $this->EventReport->setFileAlias($this->request->data['EventReport']);
             if (empty($errors)) {
-                $successMessage = __('Success settings alias');
+                $successMessage = __('Alias set successfully');
                 return $this->__getSuccessResponseBasedOnContext($successMessage, [], 'setFileAlias', $this->request->data['EventReport']['filename']);
             } else {
-                $errorMessage = __('Error while settings alias. Reasons: ' . implode(',', $errors));
+                $errorMessage = __('Error while setting alias. Reasons: ' . implode(',', $errors));
                 return $this->__getFailResponseBasedOnContext($errorMessage, [], 'setFileAlias', $this->request->data['EventReport']['filename']);
             }
         }
-    }
-
-    public function configureTemplateVariable()
-    {
-        if (!$this->request->is('ajax')) {
-            throw new MethodNotAllowedException(__('This function can only be reached via AJAX.'));
-        }
-        if ($this->request->is('post')) {
-            if (isset($this->request->data['EventReport'])) {
-                $this->request->data = $this->request->data['EventReport'];
-            }
-            $template_variables = $this->request->data['template_variables'];
-            $template_variables = JsonTool::decode($template_variables);
-            $setting = [
-                'UserSetting' => [
-                    'user_id' => $this->Auth->user('id'),
-                    'setting' => 'eventreport_template_variables',
-                    'value' => $template_variables,
-                ]
-            ];
-            $this->loadModel('UserSetting');
-            $success = $this->UserSetting->setSetting($this->Auth->user(), $setting);
-            if (!empty($success)) {
-                $message = __('Template variables saved');
-                return $this->__getSuccessResponseBasedOnContext($message, null, 'configureTemplateVariable');
-            } else {
-                $message = __('Template variables could not be saved');
-                return $this->__getFailResponseBasedOnContext($message, null, 'configureTemplateVariable');
-            }
-        }
-        $this->layout = false;
-        $this->__injectTemplateVariables($this->Auth->user());
-        $this->render('ajax/configureTemplateVariables');
     }
 
     public function downloadAsPDF($reportId)
@@ -873,10 +857,10 @@ class EventReportsController extends AppController
         $this->set('isDownloadAsPDFModuleAvailable', $isDownloadAsPDFModuleAvailable);
     }
 
-    private function __injectTemplateVariables(array $user)
+    private function __injectTemplateVariables()
     {
-        $templateVariables = $this->User->UserSetting->getValueForUser($user['id'], 'eventreport_template_variables');
-        $templateVariables = is_null($templateVariables) ? [] : $templateVariables;
+        $this->loadModel('EventReportTemplateVariable');
+        $templateVariables = $this->EventReportTemplateVariable->getAll();
         $this->set('templateVariables', $templateVariables);
     }
 

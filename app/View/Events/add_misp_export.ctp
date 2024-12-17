@@ -29,6 +29,14 @@
             'label' => __('Publish imported events'),
         ));
     }
+    ?>
+        <div class="input clear"></div>
+    <?php
+    echo $this->Form->input('Event.signature', [
+        'label' => __('Protected event signature - paste the b64 encoded key here if applicable.'),
+        'type' => 'textarea',
+        'class' => 'span7',
+    ]);
     if (!empty(Configure::read('MISP.allow_users_override_locked_field_when_importing_events'))) {
         echo '<div class="input clear"></div>';
         echo $this->Form->input('allow_lock_override', array(

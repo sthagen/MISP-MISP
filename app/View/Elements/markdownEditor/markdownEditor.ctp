@@ -194,6 +194,7 @@
     var confirmationMessageUnsavedChanges = '<?= __('You are about to leave the page with unsaved changes. Do you want to proceed?') ?>'
     var changeDetectedMessage = '<?= __('Unsaved changes') ?>'
     var canEdit = <?= $canEdit ? 'true' : 'false' ?>;
+    var isSiteAdmin = <?= $isSiteAdmin ? 'true' : 'false' ?>;
     var originalRaw = <?= json_encode(is_array($markdown) ? $markdown : array($markdown), JSON_HEX_TAG); ?>[0];
     var lastModified = '<?= h($lastModified) ?>' + '000'
     var templateVariables = <?= json_encode($templateVariables, JSON_HEX_TAG); ?>;

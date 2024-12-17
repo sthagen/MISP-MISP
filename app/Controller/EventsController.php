@@ -1819,7 +1819,7 @@ class EventsController extends AppController
             $this->__applyQueryString($event, $namedParams['galaxyAttachedAttributes'], 'Tag.name');
         }
         if ($this->_isRest()) {
-            if ($this->RestResponse->isAutomaticTool() && $event['Event']['protected']) {
+            if ($event['Event']['protected']) {
                 $this->RestResponse->signContents = true;
             }
             return $this->__restResponse($event);
@@ -2338,6 +2338,7 @@ class EventsController extends AppController
     {
         if ($this->request->is('post')) {
             $results = array();
+            $fingerprint = null;
             if (!empty($this->request->data)) {
                 if (empty($this->request->data['Event'])) {
                     $this->request->data['Event'] = $this->request->data;
@@ -2368,6 +2369,15 @@ class EventsController extends AppController
                     } else {
                         throw new NotFoundException(__('Invalid file.'));    
                     }
+                    if (!empty($this->request->data['Event']['signature'])) {
+                        $signature = $this->request->data['Event']['signature'];
+                        $this->loadModel('CryptographicKey');
+                        $fingerprint = $this->CryptographicKey->validateString($data, $signature, $this->Auth->user());
+                        if (empty($fingerprint)) {
+                            $this->Flash->error(__('The signature could not be validated.'));
+                            $this->redirect(['controller' => 'events', 'action' => 'add_misp_export']);
+                        }
+                    }
                 } else {
                     throw new MethodNotAllowedException(__('No file uploaded.'));
                 }
@@ -2378,7 +2388,7 @@ class EventsController extends AppController
 
                 $publish = $this->request->data['Event']['publish'] ?? false;
                 try {
-                    $results = $this->Event->addMISPExportFile($this->Auth->user(), $data, $isXml, $takeOwnership, $publish, $allowLockOverride);
+                    $results = $this->Event->addMISPExportFile($this->Auth->user(), $data, $isXml, $takeOwnership, $publish, $allowLockOverride, $fingerprint);
                 } catch (Exception $e) {
                     $this->log("Exception during processing MISP file import: {$e->getMessage()}");
                     $this->Flash->error(__('Could not process MISP export file. %s', $e->getMessage()));
@@ -5302,12 +5312,16 @@ class EventsController extends AppController
         if (!Configure::read('Plugin.' . $type . '_services_enable')) {
             throw new MethodNotAllowedException(__('%s services are not enabled.', $type));
         }
+        $this->loadModel('Module');
+        
+        if (!$this->Module->canUse($this->Auth->user(), 'Enrichment', ['name' => $module])) {
+            throw new MethodNotAllowedException('Module not found or not available.');
+        }
 
         if (!in_array($model, array('Attribute', 'ShadowAttribute', 'Object', 'Event'))) {
             throw new MethodNotAllowedException(__('Invalid model.'));
         }
 
-        $this->loadModel('Module');
         $enabledModules = $this->Module->getEnabledModules($this->Auth->user(), false, $type);
         
         if (!is_array($enabledModules) || empty($enabledModules)) {
@@ -6132,6 +6146,12 @@ class EventsController extends AppController
         if ($this->request->is('post') && !empty($this->request['data']['Event']['analysis_file']['name'])) {
             $this->set('file_uploaded', "1");
             $this->set('file_name', $this->request['data']['Event']['analysis_file']['name']);
+            $tmp_name = $this->request['data']['Event']['analysis_file']['tmp_name'];
+            if ((isset($fileupload['error']) && $fileupload['error'] == 0) || (!empty($tmp_name) && $tmp_name != 'none') && is_uploaded_file($tmp_name)) {
+                $this->set('file_content', file_get_contents($tmp_name)); 
+            } else {
+                throw new InternalErrorException('Upload failed or invalid file name.');
+            }
             $this->set('file_content', file_get_contents($this->request['data']['Event']['analysis_file']['tmp_name']));
         //$result = $this->Event->upload_mactime($this->Auth->user(), );
         } elseif ($this->request->is('post') && $this->request['data']['SelectedData']['mactime_data']) {

@@ -3651,7 +3651,7 @@ class Event extends AppModel
      * @return array[]
      * @throws Exception
      */
-    public function addMISPExportFile(array $user, $data, $isXml = false, $takeOwnership = false, $publish = false, $allowLockOverride = false)
+    public function addMISPExportFile(array $user, $data, $isXml = false, $takeOwnership = false, $publish = false, $allowLockOverride = false, $fingerprint = false)
     {
         if (empty($data)) {
             throw new Exception("File is empty");
@@ -3702,7 +3702,7 @@ class Event extends AppModel
             }
             $event['Event']['published'] = $publish;
             $event = $this->updatedLockedFieldForAllAnalystData($event);
-            $result = $this->_add($event, true, $user, '', null, false, null, $created_id, $validationIssues);
+            $result = $this->_add($event, true, $user, '', null, false, null, $created_id, $validationIssues, $fingerprint);
             $results[] = [
                 'info' => $event['Event']['info'],
                 'result' => $result,
@@ -3783,7 +3783,7 @@ class Event extends AppModel
      * @return bool|int|string True when new event was created, int when event with the same uuid already exists, string when validation errors
      * @throws Exception
      */
-    public function _add(array &$data, $fromXml, array $user, $org_id = 0, $passAlong = null, $fromPull = false, $jobId = null, &$created_id = 0, &$validationErrors = array())
+    public function _add(array &$data, $fromXml, array $user, $org_id = 0, $passAlong = null, $fromPull = false, $jobId = null, &$created_id = 0, &$validationErrors = array(), $fingerprint = false)
     {
         if (Configure::read('MISP.enableEventBlocklisting') !== false && isset($data['Event']['uuid'])) {
             if (!isset($this->EventBlocklist)) {
@@ -3802,6 +3802,29 @@ class Event extends AppModel
             $this->loadLog()->createLogEntry($user, 'add', 'Event', 0, $validationErrors['Event']);
             return json_encode($validationErrors);
         }
+
+        // Check if the event was signed and if the signature is valid
+        if ($fromXml && !empty($data['Event']['protected'])) {
+            // Do we have any keys passed in the protected event?
+            if (empty($data['Event']['CryptographicKey'])) {
+                throw new MethodNotAllowedException(__('Cannot add a protected event without any valid attached public keys.'));
+            }
+            // Did we receive signed data? If so the fingerprint should be set.
+            if (empty($fingerprint)) {
+                throw new MethodNotAllowedException(__('Cannot add a protected event via the API, without the input being signed properly.'));
+            }
+            $found = false;
+            // Does any of the event\'s keys match the fingerprint?
+            foreach ($data['Event']['CryptographicKey'] as $key) {
+                if ($key['fingerprint'] === $fingerprint) {
+                    $found = true;
+                }
+            }
+            if (!$found) {
+                throw new MethodNotAllowedException(__('Cannot add the protected event, whilst the input was signed, the signing key was not found in the event\'s approved list of fingerprints..'));
+            }
+        }
+
         $this->create();
         // force check userid and orgname to be from yourself
         $data['Event']['user_id'] = $user['id'];
@@ -3880,6 +3903,7 @@ class Event extends AppModel
             // check if the uuid already exists
             $existingEvent = $this->find('first', [
                 'conditions' => ['Event.uuid' => $data['Event']['uuid']],
+                'contain' => ['CryptographicKey'],
                 'fields' => ['Event.id'],
                 'recursive' => -1,
             ]);
@@ -5942,6 +5966,9 @@ class Event extends AppModel
         $module = $this->Module->getEnabledModule($module, 'Export');
         if (!is_array($module)) {
             throw new NotFoundException('Invalid module.');
+        }
+        if (!$this->Module->canUse($user, 'Enrichment', ['name' => $module])) {
+            throw new MethodNotAllowedException('That export module is restricted.');
         }
         // Export module can specify additional options for event fetch
         if (isset($module['meta']['fetch_options'])) {

@@ -344,6 +344,12 @@ class Role extends AppModel
                 'title' => __('Users using a role with this permission enabled will be able to skip creating/using OTP. This can be useful for internal service accounts for example, though use it with care. The permission has no effect on instances where otp_required is disabled.'),
                 'site_admin_optional' => true
             ],
+            'perm_server_sign' => [
+                'id' => 'RolePermServerSign',
+                'text' => 'Server Signing',
+                'readonlyenabled' => false,
+                'title' => __('Users using a role with this permission will have access to the CryptographicsKeys/serverSign endpoint. This can be useful for internal services that need to sign data, though use it with care.'),
+            ]
         );
     }
 }

@@ -93,6 +93,7 @@ class CRUDComponent extends Component
             }
             /** @var Model $model */
             $model = $this->Controller->{$modelName};
+            $model->create();
             $savedData = $model->save($data);
             if ($savedData) {
                 if (isset($params['afterSave'])) {
@@ -314,7 +315,15 @@ class CRUDComponent extends Component
                     return;
                 } else {
                     $this->Controller->Flash->success($message);
-                    $this->Controller->redirect($this->Controller->referer(['action' => 'index']));
+                    $redirect = isset($params['redirect']) ? $params['redirect'] : ['action' => 'index'];
+                    if (!empty($params['redirect_controller'])) {
+                        if (is_array($redirect)) {
+                            $redirect['controller'] = $params['redirect_controller'];
+                        } else {
+                            $redirect = '/' . $params['redirect_controller'] . '/' . $redirect;
+                        }
+                    }
+                    $this->Controller->redirect($this->Controller->referer($redirect));
                 }
             }
         }

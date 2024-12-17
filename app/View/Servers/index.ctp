@@ -35,6 +35,7 @@
             <th><?php echo $this->Paginator->sort('self_signed');?></th>
             <th><?php echo $this->Paginator->sort('skip_proxy');?></th>
             <th><?php echo $this->Paginator->sort('org');?></th>
+            <th><?php echo $this->Paginator->sort('bound_user', 'Bound Sync Users');?></th>
             <th class="actions"><?php echo __('Actions');?></th>
         </tr>
     <?php
@@ -166,6 +167,13 @@ foreach ($servers as $server):
         <td class="short"><span class="<?= $server['Server']['self_signed'] ? 'fa fa-check' : 'fa fa-times'; ?>" role="img" aria-label="<?= $server['Server']['self_signed'] ? __('Yes') : __('No'); ?>"></span></td>
         <td class="short"><span class="<?= $server['Server']['skip_proxy'] ? 'fa fa-check' : 'fa fa-times'; ?>" role="img" aria-label="<?= $server['Server']['skip_proxy'] ? __('Yes') : __('No'); ?>"></span></td>
         <td class="short"><a href="<?php echo $baseurl . "/organisations/view/" . h($server['Organisation']['id']); ?>"><?php echo h($server['Organisation']['name']); ?></a></td>
+        <td class="short">
+            <?php if (!empty($server['User'])): ?>
+                <?php foreach ($server['User'] as $user): ?>
+                    <a href="<?php echo $baseurl . "/users/view/" . h($user['id']); ?>"><?php echo h($user['email']); ?></a><br/>
+                <?php endforeach; ?>
+            <?php endif; ?>
+        </td>
         <td class="short action-links">
             <?php
                 echo sprintf('<a href="%s" title="%s" aria-label="%s" class="%s"></a>', $baseurl . '/servers/previewIndex/' . h($server['Server']['id']), __('Explore'), __('Explore'), 'fa fa-search');

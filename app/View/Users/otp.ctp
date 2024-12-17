@@ -7,7 +7,7 @@
 </div>
 
 <?php
-$label = __("Enter either your TOTP or paper based Single Use Token number ") . $hotp_counter;
+$label = __("Enter either your TOTP (please check your authenticator app, not e-mail) or paper based Single Use Token number ") . $hotp_counter;
 
 echo $this->element('/genericElements/Form/genericForm', array(
   "form" => $this->Form,

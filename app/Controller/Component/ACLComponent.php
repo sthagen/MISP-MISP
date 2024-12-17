@@ -160,6 +160,7 @@ class ACLComponent extends Component
             'add' => ['perm_add'],
             'delete' => ['perm_add'],
             'index' => ['*'],
+            'serverSign' => ['perm_server_sign'],
             'view' => ['*']
         ],
         'dashboards' => array(
@@ -265,6 +266,13 @@ class ACLComponent extends Component
             'deletePicture' => [],
             'purgeUnusedPictures' => [],
             'setFileAlias' => []
+        ),
+        'eventReportTemplateVariables' => array(
+            'add' => [],
+            'view' => ['*'],
+            'edit' => [],
+            'delete' => [],
+            'index' => ['*'],
         ),
         'events' => array(
             'add' => array('perm_add'),
@@ -514,8 +522,6 @@ class ACLComponent extends Component
         ),
         'objectTemplates' => array(
             'activate' => array(),
-            'add' => array('perm_object_template'),
-            'edit' => array('perm_object_template'),
             'delete' => array('perm_object_template'),
             'getToggleField' => array(),
             'getRaw' => array('perm_object_template'),
@@ -622,6 +628,7 @@ class ACLComponent extends Component
             'serverSettings' => array(),
             'serverSettingsEdit' => array(),
             'serverSettingsReloadSetting' => array(),
+            'serverSign' => ['perm_server_sign'],
             'startWorker' => array(),
             'startZeroMQServer' => array(),
             'statusZeroMQServer' => array(),
@@ -819,7 +826,6 @@ class ACLComponent extends Component
             'checkAndCorrectPgps' => array(),
             'checkIfLoggedIn' => array('*'),
             'dashboard' => array('*'),
-            'delete' => array('perm_admin'),
             'discardRegistrations' => array(),
             'downloadTerms' => array('*'),
             'edit' => array('self_management_enabled'),

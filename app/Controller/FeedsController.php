@@ -878,12 +878,16 @@ class FeedsController extends AppController
             throw new NotFoundException(__('Invalid feed.'));
         }
         try {
-            $event = $this->Feed->downloadEventFromFeed($feed, $eventUuid);
+            $error_message = null;
+            $event = $this->Feed->downloadEventFromFeed($feed, $eventUuid, true, $error_message);
         } catch (Exception $e) {
-            throw new Exception(__('Could not download the selected Event'), 0, $e);
+            throw new Exception($e->getMessage(), 0, $e);
         }
         if ($this->_isRest()) {
             return $this->RestResponse->viewData($event, $this->response->type());
+        }
+        if (!empty($event['Event']['error_message'])) {
+            $this->Flash->error('ERROR: ' . $event['Event']['error_message']);
         }
         if (is_array($event)) {
             if (isset($event['Event']['Attribute'])) {

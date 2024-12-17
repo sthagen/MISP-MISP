@@ -39,6 +39,13 @@ $tableData = [
     ),
 ];
 
+if (!empty($user['Server']['id'])) {
+    $tableData[] = [
+        'key' => __('Bound Server'),
+        'html' => $this->Html->link($user['Server']['name'], ['controller' => 'servers', 'action' => 'view', $user['Server']['id']]),
+    ];
+}
+
 if (empty(Configure::read('Security.otp_disabled'))) {
     $isTotp = isset($user['User']['totp']);
     $boolean = sprintf(

@@ -13,9 +13,9 @@ class ApiController extends AppController
     {
         $user = $this->_closeSession();
         if (!$user['Role']['perm_auth']) {
-            $this->Flash->warning(__('Your role do not allow API access.'));
+            $this->Flash->warning(__('Your role does not allow API access.'));
         } else if ($this->User->advancedAuthkeysEnabled() && !$this->User->AuthKey->userHasAuthKey($user['id'])) {
-            $this->Flash->warning(__('You don\'t have auth key to use this API. You can generate one at your profile.'));
+            $this->Flash->warning(__('You don\'t have any authentication key to use this API. You can generate one using the "My Profile" page.'));
         }
         $this->set('title_for_layout', __('OpenAPI'));
     }

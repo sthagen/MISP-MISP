@@ -84,6 +84,12 @@ class EventReport extends AppModel
     const SUPPORTED_IMAGES = ['gif', 'jpg', 'jpeg', 'png', 'svg',];
     private $imageCache = [];
 
+    public function __construct($id = false, $table = null, $ds = null) {
+        parent::__construct();
+        $this->schema();
+        $this->_schema['distribution']['default'] = Configure::read('MISP.default_eventreport_distribution') ?? 5;
+    }
+
     public function beforeValidate($options = array())
     {
         $eventReport = &$this->data['EventReport'];
@@ -99,11 +105,6 @@ class EventReport extends AppModel
         }
         if ($eventReport['distribution'] != 4) {
             $eventReport['sharing_group_id'] = 0;
-        }
-        // Set defaults for when some of the mandatory fields don't have defaults
-        // These fields all have sane defaults either based on another field, or due to server settings
-        if (!isset($eventReport['distribution'])) {
-            $eventReport['distribution'] = is_null(Configure::read('MISP.default_eventreport_distribution')) ? 5 : Configure::read('MISP.default_eventreport_distribution');
         }
         return true;
     }
@@ -599,8 +600,8 @@ class EventReport extends AppModel
 
     public function replaceWithTemplateVars($content, $user)
     {
-        $this->UserSetting = ClassRegistry::init('UserSetting');
-        $templateVariables = $this->UserSetting->getValueForUser($user['id'], 'eventreport_template_variables');
+        $this->EventReportTemplateVariable = ClassRegistry::init('EventReportTemplateVariable');
+        $templateVariables = $this->EventReportTemplateVariable->getAll();
         $templateVarProxy = !empty($templateVariables) ? Hash::combine($templateVariables, '{n}.name', '{n}.value') : [];
         foreach ($templateVarProxy as $varName => $replacementValue) {
             $varSyntax = '/{{\s*' . preg_quote($varName, '/') . '\s*}}/';
@@ -1227,6 +1228,17 @@ class EventReport extends AppModel
         return !empty($module) ? $module : false;
     }
 
+    public function isFetchURLModuleEnabledAndAllowed($user, $moduleName = 'html_to_markdown') {
+        $module = $this->isFetchURLModuleEnabled($moduleName);
+        if (empty($module)) {
+            return false;
+        }
+        if (!$this->Module->canUse($user, 'Enrichment', ['name' => $moduleName])) {
+            return false;
+        }
+        return $module;
+    }
+
     /**
      * findValidReplacementTag Search if tagName is in content
      *
@@ -1470,11 +1482,13 @@ class EventReport extends AppModel
         $aliases = [];
 
         foreach ($files as $filename) {
+            $theAlias = $this->getAliasForImage($filename);
             // check if this file is used in at least one report
             $reportCount = $this->find('count', [
                 'recursive' => -1,
                 'conditions' => [
-                    'content LIKE' => sprintf('%%/eventReports/viewPicture/%s%%', $filename)
+                    'content LIKE' => sprintf('%%/eventReports/viewPicture/%s%%', $filename),
+                    'content LIKE' => sprintf('%%/eventReports/viewPicture/%s%%', $theAlias),
                 ]
             ]);
             if (empty($reportCount)) {
@@ -1482,7 +1496,7 @@ class EventReport extends AppModel
             } else {
                 $fileReferenced[$filename] = $reportCount;
             }
-            $aliases[$filename] = $this->getAliasForImage($filename);
+            $aliases[$filename] = $theAlias;
         }
         return [
             'all_files' => $files,
