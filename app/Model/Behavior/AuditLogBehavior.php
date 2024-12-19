@@ -31,6 +31,7 @@ class AuditLogBehavior extends ModelBehavior
         'proposal_email_lock' => true, // Event
         'enable_password' => true,
         'confirm_password' => true,
+        'totp' => true
     ];
 
     private $modelInfo = [
