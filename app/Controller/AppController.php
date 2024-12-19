@@ -115,7 +115,8 @@ class AppController extends Controller
 
         // Set the baseurl for redirects
         $baseurl = empty(Configure::read('MISP.baseurl')) ? null : Configure::read('MISP.baseurl');
-        if (!empty($baseurl)) {
+
+        if (!empty($baseurl) && empty(Configure::read('MISP.disable_baseurl_coercion'))) {
             Configure::write('App.fullBaseUrl', $baseurl);
             Router::fullBaseUrl($baseurl);
         }

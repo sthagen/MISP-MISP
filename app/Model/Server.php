@@ -6440,6 +6440,14 @@ class Server extends AppModel
                     'test' => 'testBool',
                     'type' => 'boolean',
                     'null' => true,
+                ],
+                'disable_baseurl_coercion' => [
+                    'level' => self::SETTING_OPTIONAL,
+                    'description' => __('Disable the automatic coercion of the baseurl for the framework. This is generally recommended against as it solves some potential redirect issues, but has been reported to help when running MISP in a subdirectory.'),
+                    'value' => false,
+                    'test' => 'testBool',
+                    'type' => 'boolean',
+                    'null' => true,
                 ]
             ),
             'GnuPG' => array(
