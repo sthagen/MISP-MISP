@@ -50,7 +50,7 @@
                     unique: true,
                     id: "action",
                     label: "Action",
-                    values: <?= JsonTool::encode($actions) ?>
+                    values: <?= json_encode($actions) ?>
                 },
                 {
                     input: "select",
@@ -61,7 +61,7 @@
                     unique: true,
                     id: "model",
                     label: "Model type",
-                    values: <?= JsonTool::encode($models) ?>
+                    values: <?= json_encode($models) ?>
                 },
                 {
                     input: "text",
@@ -161,7 +161,7 @@
             rules: {
                 condition: 'AND',
                 not: false,
-                rules: <?= JsonTool::encode($qbRules) ?>,
+                rules: <?= json_encode($qbRules) ?>,
                 flags: {
                     no_add_group: true,
                     condition_readonly: true,

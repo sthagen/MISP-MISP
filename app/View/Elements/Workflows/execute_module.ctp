@@ -100,7 +100,7 @@ $type_mapper = [
 </div>
 
 <script>
-    var module = <?= JsonTool::encode($module) ?>;
+    var module = <?= json_encode($module) ?>;
     var $runModuleBtn = $('#run-module')
     var $executionResultStatus = $('#executionResultStatus')
     var $executionResultText = $('#executionResultText')

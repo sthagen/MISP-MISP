@@ -246,5 +246,22 @@
     "misp_project_vetted": true,
     "scope_of_data_to_be_shared": "",
     "self_registration": false
+  },
+  {
+    "name": "THREATMON MISP Community",
+    "logo": "https://threatmon.io/wp-content/uploads/2024/08/logo.svg",
+    "uuid": "666f9ad0-182b-40a7-9361-f3d7e09b25c3",
+    "org_uuid": "9e71b9b7-7cf6-45cc-8af4-d5fb9527232e",
+    "org_name": "THREATMONIT",
+    "description": "We share all kinds of data we detect by conducting Cyber Threat Intelligence monitoring and dark web research.",
+    "url": "https://misp.threatmonit.io",
+    "sector": " Various",
+    "nationality": "International",
+    "type": "Information Sharing Community",
+    "email": "info@threatmonit.io",
+    "pgp_key": null,
+    "misp_project_vetted": false,
+    "scope_of_data_to_be_shared": "",
+    "self_registration": false
   }
 ]

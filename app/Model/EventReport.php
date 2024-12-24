@@ -162,7 +162,7 @@ class EventReport extends AppModel
                 'conditions' => ['id' => $this->id],
             ]);
             if ($savedReport) {
-                $this->Event->captureAnalystData($user, $report, 'EventReport', $savedReport['EventReport']['uuid']);
+                $this->Event->captureAnalystData($user, $report['EventReport'], 'EventReport', $savedReport['EventReport']['uuid']);
             }
         }
         return $errors;
@@ -1178,7 +1178,7 @@ class EventReport extends AppModel
         return $toReturn;
     }
 
-    public function downloadMarkdownFromURL($event_id, $url, $format = 'html')
+    public function downloadMarkdownFromURL($user, $event_id, $url, $format = 'html')
     {
         $this->Module = ClassRegistry::init('Module');
         $formatMapping = [
@@ -1190,7 +1190,7 @@ class EventReport extends AppModel
             'odt' => 'odt_enrich',
             'docx' => 'docx_enrich'
         ];
-        $module = $this->isFetchURLModuleEnabled($formatMapping[$format]);
+        $module = $this->isFetchURLModuleEnabledAndAllowed($user, $formatMapping[$format]);
         if (!is_array($module)) {
             return false;
         }
@@ -1226,6 +1226,27 @@ class EventReport extends AppModel
         $this->Module = ClassRegistry::init('Module');
         $module = $this->Module->getEnabledModule($moduleName, 'expansion');
         return !empty($module) ? $module : false;
+    }
+
+    public function getEnabledFetchURLModules($user)
+    {
+        $formatMapping = [
+            'html' => 'html_to_markdown',
+            'pdf' => 'pdf_enrich',
+            'pptx' => 'pptx_enrich',
+            'xlsx' => 'xlsx_enrich',
+            'ods' => 'ods_enrich',
+            'odt' => 'odt_enrich',
+            'docx' => 'docx_enrich'
+        ];
+        $results = [];
+        foreach ($formatMapping as $format => $moduleName) {
+            $module = $this->isFetchURLModuleEnabledAndAllowed($user, $moduleName);
+            if (!empty($module)) {
+                $results[$format] = $moduleName;
+            }
+        }
+        return $results;
     }
 
     public function isFetchURLModuleEnabledAndAllowed($user, $moduleName = 'html_to_markdown') {

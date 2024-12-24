@@ -8205,8 +8205,12 @@ class Event extends AppModel
             if (!empty($data[$type])) {
                 foreach ($data[$type] as $analystData) {
                     $analystData['note_type_name'] = $type;
-                    $analystData['object_type'] = $parentObjectType;
-                    $analystData['object_uuid'] = $parentObjectUUID;
+                    if (empty($analystData['object_type'])) {
+                        $analystData['object_type'] = $parentObjectType;
+                    }
+                    if (empty($analystData['object_uuid'])) {
+                        $analystData['object_uuid'] = $parentObjectUUID;
+                    }
                     $this->{$type}->captureAnalystData($user, $analystData);
                 }
             }

@@ -2354,7 +2354,12 @@ class EventsController extends AppController
                     }
 
                     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-                    if (($ext !== 'xml' && $ext !== 'json') && $file['size'] > 0 && is_uploaded_file($file['tmp_name'])) {
+                    if (!is_uploaded_file($file['tmp_name']) || !($file['size'] > 0)) {
+                        $message = __('Something went wrong with the file upload.');
+                        $this->Flash->error($message);
+                        throw new MethodNotAllowedException($message);
+                    }
+                    if (($ext !== 'xml' && $ext !== 'json')) {
                         $log = ClassRegistry::init('Log');
                         $log->createLogEntry($this->Auth->user(), 'file_upload', 'Event', 0, 'MISP export file upload failed', 'File details: ' . json_encode($file));
                         $this->Flash->error(__('You may only upload MISP XML or MISP JSON files.'));
@@ -5201,7 +5206,6 @@ class EventsController extends AppController
         $this->set('galaxy_id', $galaxy_id);
         $this->set('eventId', $eventId);
         $this->set('extended', $extended);
-        $this->set('extending', $extending);
         $this->set('target_type', $scope);
         $this->set('columnOrders', $killChainOrders);
         $this->set('tabs', $tabs);

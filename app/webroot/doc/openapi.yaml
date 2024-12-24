@@ -340,14 +340,51 @@ paths:
 
   /attributes/addTag/{attributeId}/{tagId}/local:{local}:
     post:
-      summary: "Add a tag to an attribute"
+      summary: "Add tag(s) to attribute(s)"
+      description: "Add one or multiple tags to one or multiple attributes"
       operationId: tagAttribute
       tags:
         - Attributes
       parameters:
-        - $ref: "#/components/parameters/attributeIdParameter"
-        - $ref: "#/components/parameters/tagIdParameter"
-        - $ref: "#/components/parameters/localParameter"
+        - name: attributeId
+          in: path
+          description: Attribute ID or 'selected' to add tags to multiple attributes
+          required: false
+          schema:
+            type: string
+        - name: tagId
+          in: path
+          description: Tag ID, tag name or tag collection ID (format collection_N)
+          required: false
+          schema:
+            type: string
+        - name: local
+          in: path
+          description: Whether to add tag as local tag (1) or global tag (0). Leave the other path params empty if you want to add local tags using the json request body params
+          required: false
+          schema:
+            type: integer
+            enum: [ 0, 1 ]
+            default: 0
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                attribute:
+                  type: string
+                  description: Attribute ID when path param id is not set
+                  example: "12"
+                attribute_ids:
+                  type: string
+                  description: JSON encoded array of attribute IDs when id is 'selected'
+                  example: "[\"1\",\"2\"]"
+                tag:
+                  type: string
+                  description: Tag ID/name or tag collection ID (format collection_N) when path param 'tagId' is not specified. This can also be a JSON encoded array of IDs/names and tag collection IDs to add multiple tags at once. Required if path param 'tagId' is not set
+                  example: "[\"tag\",\"1\",\"collection_1\"]"
+
       responses:
         "200":
           $ref: "#/components/responses/AddAttributeTagResponse"

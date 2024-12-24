@@ -6,7 +6,7 @@
         echo $this->Form->create('Event', array('url' => $url, 'class' => 'mainForm hidden'));
         echo $this->Form->input('data', array(
             'type' => 'hidden',
-            'value' => JsonTool::encode($event)
+            'value' => json_encode($event)
         ));
         echo $this->Form->input('JsonObject', array(
             'label' => false,

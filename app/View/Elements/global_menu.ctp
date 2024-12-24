@@ -549,6 +549,13 @@ if (!empty($me)) {
             )
         )
     );
+    $logo = '<span class="logoBlueStatic bold" id="smallLogo">MISP</span>';
+    $today = date('md');
+    if ($today >= 1222 && $today <= 1226) {
+        $logo = '<span class="logoBlueStatic bold" id="smallLogo" title="' . __('Happy holidays!') .'">M🎄SP</span>';
+    } else if ($today == 1231 || $today = 0101) {
+        $logo = '<span class="logoBlueStatic bold" id="smallLogo" title="' . __('Happy New Year!') .'">🎉 MISP 🎉</span>';
+    }
     $menu_right = array(
         array(
             'type' => 'root',
@@ -569,7 +576,7 @@ if (!empty($me)) {
         array(
             'type' => 'root',
             'url' => empty($homepage['path']) ? $baseurl : $baseurl . h($homepage['path']),
-            'html' => '<span class="logoBlueStatic bold" id="smallLogo">MISP</span>'
+            'html' => $logo
         ),
         [
             'type' => 'root',
