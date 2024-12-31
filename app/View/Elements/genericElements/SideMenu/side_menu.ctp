@@ -1239,9 +1239,9 @@ $divider = '<li class="divider"></li>';
                             'text' => __('Access Logs'),
                         ));
                     }
-                    if ($isAdmin) {
+                    if ($me['Role']['perm_audit']) {
                         echo $this->element('/genericElements/SideMenu/side_menu_link', array(
-                            'url' => $baseurl . '/admin/logs/search',
+                            'url' => $baseurl . '/logs/search',
                             'text' => __('Search Logs')
                         ));
                     }

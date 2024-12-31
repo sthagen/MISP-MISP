@@ -41,10 +41,10 @@ $quickEdit = function($fieldName) use ($mayModify) {
 $objectId = intval($object['id']);
 ?>
 <tr id="Object_<?= $objectId ?>_tr" data-primary-id="<?= $objectId ?>" class="<?php echo $tr_class; ?>" tabindex="0" data-uuid="<?= h($object['uuid']) ?>">
-  <?php
+    <?php
     if ($mayModify || $extended):
-  ?>
-    <td style="width:10px;"></td>
+      ?>
+    <td style="width:10px;"> <input class="select_all_object_attributes_<?= h($object['id']) ?>" type="checkbox" title="<?php echo __('Select all object attributes');?>" role="button" tabindex="0" aria-label="<?php echo __('Select all object attributes');?>" onclick="toggleAllObjectAttributeCheckboxes(<?= h($object['id']) ?>);"></td>
   <?php
     endif;
   ?>

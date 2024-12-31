@@ -483,6 +483,10 @@ class EventReportsController extends AppController
         if (!$this->request->is('ajax') && !$this->_isRest()) {
             throw new MethodNotAllowedException(__('This function can only be reached via AJAX and via the API.'));
         }
+
+        // throws exception if the user can't modify it
+        $this->__canModifyReport($event_id);
+        
         $errors = [];
         $fetcherModules = $this->EventReport->getEnabledFetchURLModules($this->Auth->user());
         if ($this->request->is('post')) {

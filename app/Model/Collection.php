@@ -111,7 +111,9 @@ class Collection extends AppModel
             }            
         }
         if (!empty($user['Role']['perm_modify']) && $user['id'] === $collection['Collection']['user_id']) {
+            return true;
         }
+        return false;
     }
 
     public function mayView($user_id, $collection_id)

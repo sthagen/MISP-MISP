@@ -1051,6 +1051,9 @@ class UsersController extends AppController
                     $this->User->extralog($this->Auth->user(), "edit", "user", $fieldsResult, $user);
                     if ($this->_isRest()) {
                         $user['User']['password'] = '******';
+                        if (!empty($user['User']['totp'])) {
+                            $user['User']['totp'] = '******';
+                        }
                         if (!empty(Configure::read('Security.advanced_authkeys'))) {
                             unset($user['User']['authkey']);
                         }

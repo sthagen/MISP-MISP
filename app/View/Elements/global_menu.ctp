@@ -528,8 +528,8 @@ if (!empty($me)) {
                 ),
                 array(
                     'text' => __('Search Logs'),
-                    'url' => $baseurl . '/admin/logs/search',
-                    'requirement' => $this->Acl->canAccess('logs', 'admin_search')
+                    'url' => $baseurl . '/logs/search',
+                    'requirement' => $this->Acl->canAccess('logs', 'search')
                 )
             )
         ),
