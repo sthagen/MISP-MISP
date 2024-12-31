@@ -194,12 +194,13 @@ class AnalystDataController extends AppController
                 if (!$this->request->is('ajax')) {
                     unset($analystData[$this->modelSelection]['_canEdit']);
                 }
-                $children = $this->AnalystData->fetchChildNotesAndOpinions($this->Auth->user(), $analystData[$this->modelSelection], $this->_isRest(), 1);
-                foreach ($children as $child) {
-                    foreach ($child as $childType => $childData) {
-                        $analystData[$this->modelSelection][$childType][] = $childData;
-                    }
-                }
+                // FIXME: This is not working as expected
+                // $children = $this->AnalystData->fetchChildNotesAndOpinions($this->Auth->user(), $analystData[$this->modelSelection], $this->_isRest(), 1);
+                // foreach ($children as $child) {
+                //     foreach ($child as $childType => $childData) {
+                //         $analystData[$this->modelSelection][$childType][] = $childData;
+                //     }
+                // }
                 return $analystData;
             }
         ]);
