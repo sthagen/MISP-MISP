@@ -185,7 +185,7 @@ class AnalystDataController extends AppController
             $id = $this->AnalystData->getIDFromUUID($type, $id);
         }
 
-        $this->AnalystData->fetchRecursive = true;
+        $this->AnalystData->fetchRecursive = false;
         $conditions = $this->AnalystData->buildConditions($this->Auth->user());
         $this->CRUD->view($id, [
             'conditions' => $conditions,
@@ -194,13 +194,19 @@ class AnalystDataController extends AppController
                 if (!$this->request->is('ajax')) {
                     unset($analystData[$this->modelSelection]['_canEdit']);
                 }
-                // FIXME: This is not working as expected
-                // $children = $this->AnalystData->fetchChildNotesAndOpinions($this->Auth->user(), $analystData[$this->modelSelection], $this->_isRest(), 1);
-                // foreach ($children as $child) {
-                //     foreach ($child as $childType => $childData) {
-                //         $analystData[$this->modelSelection][$childType][] = $childData;
-                //     }
-                // }
+                if ($this->_isRest()) {
+                    $children = $this->AnalystData->fetchChildNotesAndOpinions($this->Auth->user(), $analystData[$this->modelSelection], true, 5);
+                    if (!empty($children)) {
+                        foreach ($children as $child) {
+                            foreach ($child as $childType => $childData) {
+                                $analystData[$this->modelSelection][$childType][] = $childData;
+                            }
+                        }
+                    }    
+                } else {
+                    $children = $this->AnalystData->fetchChildNotesAndOpinions($this->Auth->user(), $analystData[$this->modelSelection], false, 1);
+                    $analystData[$this->modelSelection] = $analystData[$this->modelSelection] + $children;
+                }
                 return $analystData;
             }
         ]);
