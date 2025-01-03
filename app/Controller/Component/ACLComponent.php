@@ -1158,7 +1158,7 @@ class ACLComponent extends Component
     public function canModifyGalaxyCluster(array $user, array $cluster)
     {
         if (!isset($cluster['GalaxyCluster'])) {
-            throw new InvalidArgumentException('Passed object does not contain an GalaxyCluster.');
+            throw new InvalidArgumentException('Passed object does not contain a GalaxyCluster.');
         }
         if ($cluster['GalaxyCluster']['default']) {
             return false; // it is not possible to edit default clusters
@@ -1182,7 +1182,7 @@ class ACLComponent extends Component
     public function canModifyGalaxy(array $user, array $galaxy)
     {
         if (!isset($galaxy['Galaxy'])) {
-            throw new InvalidArgumentException('Passed object does not contain an Galaxy.');
+            throw new InvalidArgumentException('Passed object does not contain a Galaxy.');
         }
         if ($galaxy['Galaxy']['default']) {
             return false; // it is not possible to edit default clusters

@@ -36,6 +36,8 @@ class AuditLogsController extends AppController
         'Server',
         'ShadowAttribute',
         'SharingGroup',
+        'SharingGroupBlueprint',
+        'SharingGroupOrg',
         'SystemSetting',
         'Tag',
         'TagCollection',

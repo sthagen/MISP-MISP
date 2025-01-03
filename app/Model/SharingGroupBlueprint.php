@@ -126,18 +126,27 @@ class SharingGroupBlueprint extends AppModel
             $sg = $this->SharingGroup->find('first', [
                 'recursive' => -1,
                 'contain' => ['SharingGroupOrg'],
-                'conditions' => ['SharingGroup.id' => $sharingGroupBlueprint['SharingGroupBlueprint']['sharing_group_id']]
+                'conditions' => [
+                    'SharingGroup.id' => $sharingGroupBlueprint['SharingGroupBlueprint']['sharing_group_id']
+                ]
             ]);
             $existingOrgs = [];
+            $editors = [
+                $sg['SharingGroup']['org_id']
+            ];
             foreach ($sg['SharingGroupOrg'] as $sgo) {
                 $existingOrgs[] = $sgo['org_id'];
+                if (!empty($sgo['extend'])) {
+                    $editors[] = $sgo['org_id'];
+                }
             }
             $existingOrgs = array_unique($existingOrgs);
             $id = $sg['SharingGroup']['id'];
+            $failed++;
         }
         return [
             'id' => $id,
-            'changed' => $this->__handleSharingGroupOrgs($existingOrgs, $data['orgs'], $id) || $created,
+            'changed' => $failed ? false : ($this->__handleSharingGroupOrgs($existingOrgs, $data['orgs'], $id) || $created),
             'created' => $created,
             'failed' => $failed
         ];

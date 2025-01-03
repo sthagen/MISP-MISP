@@ -5241,7 +5241,7 @@ class Server extends AppModel
                 ],
                 'enable_automatic_garbage_collection' => [
                     'level' => 1,
-                    'description' => __('Enable to execute an automatic garbage collection of temporary data such as export files. When enabled, on agerage every 100th query will check whether to garbage collect. Garbage collection can run at maximum once an hour.'),
+                    'description' => __('Enable to execute an automatic garbage collection of temporary data such as export files. When enabled, on average every 100th query will check whether to garbage collect. Garbage collection can run at maximum once an hour.'),
                     'value' => false,
                     'test' => 'testBool',
                     'type' => 'boolean',

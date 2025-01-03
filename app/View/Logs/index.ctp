@@ -6,6 +6,11 @@
             'data_path' => 'Log.id'
         ],
         [
+            'name' => __('Created'),
+            'sort' => 'Log.created',
+            'data_path' => 'Log.created'
+        ],
+        [
             'name' => __('IP'),
             'sort' => 'Log.ip',
             'data_path' => 'Log.ip',

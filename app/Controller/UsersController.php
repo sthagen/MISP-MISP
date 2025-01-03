@@ -1932,7 +1932,7 @@ class UsersController extends AppController
         } else {
             $this->set(
                 'question',
-                __('Are you sure you want to delete the TOTP of the user?.')
+                __('Are you sure you want to delete the TOTP of the user?')
             );
             $this->set('title', __('Delete user TOTP'));
             $this->set('actionName', 'Delete');

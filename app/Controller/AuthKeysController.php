@@ -114,7 +114,7 @@ class AuthKeysController extends AppController
     public function add($user_id = false)
     {
         $options = $this->IndexFilter->harvestParameters(['user_id']);
-        if (!empty($params['user_id'])) {
+        if (!empty($options['user_id'])) {
             $user_id = $options['user_id'];
         }
         $params = [
