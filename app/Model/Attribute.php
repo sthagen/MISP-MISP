@@ -457,7 +457,7 @@ class Attribute extends AppModel
                 if (isset($attribute['event_id'])) {
                     $this->__alterAttributeCount($attribute['event_id'], false);
                 }
-            } else {
+            } else if (empty($attribute['skip_correlation'])) {
                 /*
                 * Only recorrelate if:
                 * - We are dealing with a new attribute OR

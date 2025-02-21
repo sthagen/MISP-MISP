@@ -2807,7 +2807,7 @@ class AttributesController extends AppController
             $attribute = $this->Attribute->find('first', [
                 'recursive' => -1,
                 'conditions' => ['Attribute.id' => $id],
-                'fields' => ['Attribute.deleted', 'Attribute.event_id', 'Attribute.id', 'Attribute.object_id', 'Event.orgc_id', 'Event.user_id'],
+                'fields' => ['Attribute.deleted', 'Attribute.event_id', 'Attribute.id', 'Attribute.object_id', 'Attribute.type', 'Event.orgc_id', 'Event.user_id'],
                 'contain' => ['Event'],
             ]);
             if (empty($attribute) || $attribute['Attribute']['deleted']) {
