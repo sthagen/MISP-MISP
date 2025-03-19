@@ -874,4 +874,32 @@ class Tag extends AppModel
     {
         return (bool)preg_match(self::RE_CUSTOM_GALAXY, $tagName);
     }
+
+    public function countRelationships(): array
+    {
+        $sources = ['EventTag', 'AttributeTag', 'EventReportTag'];
+        $counts = [];
+        foreach ($sources as $source) {
+            $this->{$source}->virtualFields['tag_type_count'] = "COUNT({$source}.id)";
+            $counts[$source] = $this->{$source}->find('list', [
+                'recursive' => -1,
+                'fields' => ["{$source}.relationship_type", 'tag_type_count'],
+                'group' => ["{$source}.relationship_type"],
+                'conditions' => [
+                    'relationship_type !=' => '',
+                ]
+            ]);
+            unset($this->{$source}->virtualFields['tag_type_count']);
+        }
+        $counts['all'] = [];
+        foreach ($counts as $scope => $scopedCounts) {
+            foreach ($scopedCounts as $type => $scopedCount) {
+                if (!isset($counts['all'][$type])) {
+                    $counts['all'][$type] = 0;
+                }
+                $counts['all'][$type] += $scopedCount;
+            }
+        }
+        return $counts;
+    }
 }

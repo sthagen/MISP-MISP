@@ -1,17 +1,16 @@
 <?php
 include_once APP . 'Model/WorkflowModules/WorkflowBaseModule.php';
 
-class Module_tag_if extends WorkflowBaseLogicModule
+class Module_filter_tag extends WorkflowFilteringLogicModule
 {
-    public $id = 'tag-if';
-    public $name = 'IF :: Tag';
-    public $version = '0.4';
-    public $description = 'Tag IF / ELSE condition block. The `then` output will be used if the encoded conditions is satisfied, otherwise the `else` output will be used.';
-    public $icon = 'code-branch';
+    public $id = 'filter-tag';
+    public $isFiltering = true;
+    public $name = 'Filter :: Tag';
+    public $version = '0.2';
+    public $description = 'Tag filtering block. The module filters incoming data and forward the matching data to its output.';
+    public $icon = 'filter';
     public $inputs = 1;
-    public $outputs = 2;
-    public $html_template = 'if';
-    public $expect_misp_core_format = true;
+    public $outputs = 1;
     public $params = [];
 
     private $Tag;
@@ -50,15 +49,22 @@ class Module_tag_if extends WorkflowBaseLogicModule
                 $tags[] = $tag['Tag']['name'];
             }
         }
+
         $this->params = [
+            [
+                'id' => 'filtering-label',
+                'label' => __('Filtering Label'),
+                'type' => 'select',
+                'options' => $this->_genFilteringLabels(),
+                'default' => array_keys($this->_genFilteringLabels())[0],
+            ],
             [
                 'id' => 'scope',
                 'label' => 'Scope',
                 'type' => 'select',
                 'options' => [
-                    'event' => __('Event'),
-                    'attribute' => __('Any Attribute'),
-                    'event_attribute' => __('Any Inherited Attribute'),
+                    'attribute' => __('Attributes'),
+                    'event_attribute' => __('Inherited Attributes'),
                     'event_report' => __('Event Report'),
                     'inherited_report' => __('Inherited Event Report'),
                 ],
@@ -93,36 +99,47 @@ class Module_tag_if extends WorkflowBaseLogicModule
     public function exec(array $node, WorkflowRoamingData $roamingData, array &$errors=[]): bool
     {
         parent::exec($node, $roamingData, $errors);
-        $data = $roamingData->getData();
-        $params = $this->getParamsWithValues($node, $data);
+        $rData = $roamingData->getData();
+        $params = $this->getParamsWithValues($node, $rData);
 
         $selectedTags = !empty($params['tags']['value']) ? $params['tags']['value'] : [];
         $selectedClusters = !empty($params['clusters']['value']) ? $params['clusters']['value'] : [];
-        $selectedClusters = array_map(function($tagName) {
+        $selectedClusters = array_map(function ($tagName) {
             return "misp-galaxy:{$tagName}"; // restored stripped part for display purposes
         }, $selectedClusters);
         $allSelectedTags = array_merge($selectedTags, $selectedClusters);
         $operator = $params['condition']['value'];
         $scope = $params['scope']['value'];
-        $extracted = $this->__getTagFromScope($scope, $data);
-        $eval = $this->evaluateCondition($extracted, $operator, $allSelectedTags);
-        return !empty($eval);
-    }
+        $filteringLabel = $params['filtering-label']['value'];
 
-    private function __getTagFromScope($scope, array $data): array
-    {
-        $path = '';
-        if ($scope == 'attribute') {
-            $path = 'Event._AttributeFlattened.{n}.Tag.{n}.name';
-        } elseif ($scope == 'event_attribute') {
-            $path = 'Event._AttributeFlattened.{n}._allTags.{n}.name';
-        } else if ($scope == 'event_report') {
-            $path = 'Event.EventReport.{n}.Tag.{n}.name';
-        } else if ($scope == 'inherited_report') {
-            $path = 'Event.EventReport.{n}._allTags.{n}.name';
-        } else {
-            $path = 'Event.Tag.{n}.name';
+        $newRData = $rData;
+        if (empty($newRData['_unfilteredData'])) {
+            $newRData['_unfilteredData'] = $rData;
         }
-        return Hash::extract($data, $path) ?? [];
+
+        if ($scope == 'attribute' || $scope == 'event_attribute') {
+            $selector = 'Event._AttributeFlattened';
+            $path = $scope == 'event_attribute' ? '_allTags.{n}.name' : 'Tag.{n}.name';
+            $value = $allSelectedTags;
+            $newRData['enabledFilters'][$filteringLabel] = [
+                'selector' => $selector,
+                'path' => $path,
+                'operator' => $operator,
+                'value' => $value,
+            ];
+        } else if ($scope == 'event_report' || $scope == 'inherited_report') {
+            $selector = 'Event.EventReport';
+            $path = $scope == 'inherited_report' ? '_allTags.{n}.name' : 'Tag.{n}.name';
+            $value = $allSelectedTags;
+            $newRData['enabledFilters'][$filteringLabel] = [
+                'selector' => $selector,
+                'path' => $path,
+                'operator' => $operator,
+                'value' => $value,
+            ];
+        }
+
+        $roamingData->setData($newRData);
+        return true;
     }
 }

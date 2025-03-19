@@ -2264,4 +2264,46 @@ class User extends AppModel
 
         return null;
     }
+
+    public function createNotificationToast(array $user, $toastHeader, $toastBody, $variant = 'info'): bool
+    {
+        if ($user['User']['disabled'] || !$this->checkIfUserIsValid($user['User'])) {
+            return false;
+        }
+        $redis = $this->setupRedis();
+        if ($redis !== false) {
+            $pipe = $redis->pipeline();
+            $redisNotificationKey = 'misp:user_toast_notification:' . $user['User']['id'];
+            $expiration = 86400; # 1 day
+            $flashMessage = [
+                'message' => $toastHeader,
+                'element' => 'parametrized_flash',
+                'params' => [
+                    'toast_header' => $toastHeader,
+                    'toast_body' => $toastBody,
+                    'variant' => $variant,
+                ],
+            ];
+            $pipe->sadd($redisNotificationKey, RedisTool::serialize($flashMessage));
+            $pipe->expire($redisNotificationKey, $expiration);
+            $pipe->exec();
+            return true;
+        }
+        return false;
+    }
+
+    public function collectNotificationToastForUser(array $user): array
+    {
+        if (!is_null($user['User'])) {
+            $redis = $this->setupRedis();
+            if ($redis !== false) {
+                $redisNotificationKey = 'misp:user_toast_notification:' . $user['User']['id'];
+                $flashMessages = $redis->smembers($redisNotificationKey);
+                $redis->del($redisNotificationKey);
+                $flashMessages = array_map('RedisTool::deserialize', $flashMessages);
+                return $flashMessages;
+            }
+        }
+        return []; 
+    }
 }

@@ -3692,17 +3692,30 @@ function testSyncRule(id, method) {
                         .text(': #' + response.error)
                 );
             } else {
-                resultText = response.without_rules - response.with_rules
-                if (resultText != 0) {
-                    resultText += ' (' + (((response.without_rules - response.with_rules) / response.without_rules) * 100).toFixed(1) + '%' + ')'
+                var resultTextFiltered = response.without_rules - response.with_rules
+                if (resultTextFiltered != 0) {
+                    resultTextFiltered += ' (' + (((response.without_rules - response.with_rules) / response.without_rules) * 100).toFixed(1) + '%' + ')'
+                }
+                var resultTextSync = response.with_rules
+                if (resultTextSync != 0) {
+                    resultTextSync += ' (' + ((response.with_rules / response.without_rules) * 100).toFixed(1) + '%' + ')'
                 }
                 resultContainer.append(
                     $('<div>').css({'text-wrap': 'nowrap'}).append(
-                        $('<span>')
-                            .attr('class', 'blue bold')
-                            .text('# Filtered Events'),
-                        $('<span>')
-                            .text(': ' + resultText)
+                        $('<div>').append(
+                            $('<span>')
+                                .attr('class', 'blue bold')
+                                .text('# Filtered Events'),
+                            $('<span>')
+                                .text(': ' + resultTextFiltered)
+                        ),
+                        $('<div>').append(
+                            $('<span>')
+                                .attr('class', 'blue bold')
+                                .text('# Events to be Sync'),
+                            $('<span>')
+                                .text(': ' + resultTextSync)
+                        ),
                     )
                 )
             }

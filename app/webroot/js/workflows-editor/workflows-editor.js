@@ -1901,6 +1901,14 @@ function genInput(options, isTextArea, forNode = true) {
     if (options.disabled !== undefined) {
         $input.prop('disabled', options.disabled == true)
     }
+    var otherAcceptedAttrs = ['min', 'max', 'step', 'input_type', ]
+    otherAcceptedAttrs.forEach((inputAttr) => {
+        if (inputAttr == 'input_type' && options['input_type'] !== undefined) {
+            $input.attr('type', options['input_type'])
+        } else if (options[inputAttr] !== undefined) {
+            $input.attr(inputAttr, options[inputAttr])
+        }
+    })
     $label.append($input)
     $container.append($label)
     return $container

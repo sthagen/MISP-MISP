@@ -521,7 +521,7 @@ class Workflow extends AppModel
         $data = $triggerModule->collectData($userForWorkflow, $indexed_params, $passedData);
         $lastResult = ['success' => false, 'message' => __('No data collected.')];
         foreach ($data as $dataPiece) {
-            $lastResult = $this->executeWorkflowForTrigger($trigger_id, $dataPiece, $blockingErrors, true);
+            $lastResult = $this->executeWorkflowForTrigger($trigger_id, $dataPiece, $blockingErrors, true); // FIXME: reuse passed user
         }
         return $lastResult;
     }
@@ -546,7 +546,7 @@ class Workflow extends AppModel
             return true;
         }
 
-        if (empty($trigger['blocking'])) {
+        if (empty($trigger['blocking']) && Configure::read('MISP.background_jobs')) {
             $this->Job = ClassRegistry::init('Job');
             $jobId = $this->Job->createJob(
                 'SYSTEM',
@@ -571,6 +571,8 @@ class Workflow extends AppModel
             );
             return true;
         } else {
+            $initiatorUserId = Configure::check('CurrentUserId') ? Configure::read('CurrentUserId') : null;
+            Configure::write('InitiatorUserId', $initiatorUserId);
             $blockingPathExecutionSuccess = $this->executeWorkflowForTrigger($trigger_id, $data, $blockingErrors);
             return $blockingPathExecutionSuccess;
         }
@@ -709,8 +711,9 @@ class Workflow extends AppModel
             $errors[] = __('Could not find a valid user to run the workflow. Please set setting `MISP.host_org_id` or make sure a valid site_admin user exists.');
             return false;
         }
+        $initiatorUserId = Configure::check('CurrentUserId') ? Configure::read('CurrentUserId') : null;
         $triggerNode = $this->workflowGraphTool->extractTriggerFromWorkflow($workflow['Workflow']['data'], true);
-        $roamingData = $this->workflowGraphTool->getRoamingData($userForWorkflow, $data, $workflow, $startNode, $triggerNode);
+        $roamingData = $this->workflowGraphTool->getRoamingData($userForWorkflow, $data, $workflow, $startNode, $triggerNode, $initiatorUserId);
         $graphData = !empty($workflow['Workflow']) ? $workflow['Workflow']['data'] : $workflow['data'];
         $graphWalker = $this->workflowGraphTool->getWalkerIterator($graphData, $this, $startNode, $for_path, $roamingData);
         $preventExecutionForPaths = [];
@@ -858,7 +861,8 @@ class Workflow extends AppModel
         if (method_exists($triggerClass, 'exec')) {
             $errors = [];
             $userForWorkflow = $this->getUserForWorkflow();
-            $roamingData = $this->workflowGraphTool->getRoamingData($userForWorkflow, $data, $workflow, $startNodeID);
+            $initiatorUserId = Configure::check('CurrentUserId') ? Configure::read('CurrentUserId') : null;
+            $roamingData = $this->workflowGraphTool->getRoamingData($userForWorkflow, $data, $workflow, $startNodeID, null, $initiatorUserId);
             return $triggerClass->exec($node, $roamingData, $errors);
         }
         return true;
@@ -1666,7 +1670,8 @@ class Workflow extends AppModel
             $result['error'][] = __('Could not find a valid user to run the workflow. Please set setting `MISP.host_org_id` or make sure a valid site_admin user exists.');
             return $result;
         }
-        $roaming_data = $this->workflowGraphTool->getRoamingData($user_for_workflow, $data);
+        $initiatorUserId = Configure::check('CurrentUserId') ? Configure::read('CurrentUserId') : null;
+        $roaming_data = $this->workflowGraphTool->getRoamingData($user_for_workflow, $data, [], -1, null, $initiatorUserId);
         $errors = [];
         $success = $module_class->exec($node, $roaming_data, $errors);
         $result['success'] = $success;
@@ -1688,6 +1693,7 @@ class Workflow extends AppModel
                 'saved_filters' => $module_config['saved_filters'],
                 'module_data' => $module_config,
                 'expect_misp_core_format' => $module_config['expect_misp_core_format'],
+                'is_filtering' => $module_config['isFiltering'],
             ],
             'inputs' => [],
             'outputs' => [],
@@ -1769,6 +1775,10 @@ class Workflow extends AppModel
             'timestamp' => date("c"),
             'data' => $data,
         ];
+        $initiatorUserId = Configure::check('CurrentUserId') ? Configure::read('CurrentUserId') : null;
+        if (!empty($initiatorUserId)) {
+            $dataToPost['initiator_user_id'] = $initiatorUserId;
+        }
         if (!empty($errors)) {
             $dataToPost['errors'] = $errors;
         }

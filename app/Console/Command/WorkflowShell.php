@@ -20,6 +20,8 @@ class WorkflowShell extends AppShell {
         if (!empty($this->args[4])) {
             Configure::write('CurrentUserId', JsonTool::decode($this->args[4]));
         }
+        $initiator_user_id = Configure::check('CurrentUserId') ? Configure::read('CurrentUserId') : null;
+        Configure::write('InitiatorUserId', $initiator_user_id);
 
         $blockingErrors = [];
         $executionSuccess = $this->Workflow->executeWorkflowForTrigger($trigger_id, $data, $blockingErrors);

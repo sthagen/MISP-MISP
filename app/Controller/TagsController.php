@@ -1091,14 +1091,24 @@ class TagsController extends AppController
 
         } else {
             $this->loadModel('ObjectRelationship');
-            $relationships = $this->ObjectRelationship->find('column', array(
+            $relationships = $this->ObjectRelationship->find('all', array(
                 'recursive' => -1,
-                'fields' => ['name'],
+                'fields' => ['name', 'highlighted', 'description'],
+                'order' => ['highlighted DESC']
             ));
-            $relationships = array_combine($relationships, $relationships);
-            $relationships['custom'] = 'custom';
-            $relationships[null] = 'Unspecified';
-            ksort($relationships);
+            $relationships = Hash::extract($relationships, '{n}.ObjectRelationship');
+            array_unshift($relationships, [
+                'name' => 'custom',
+                'value' => 'custom',
+                'description' => __('Allow to set a custom relationship'),
+                'highlighted' => false,
+            ]);
+            array_unshift($relationships, [
+                'name' => 'Unspecified',
+                'value' => '',
+                'description' => __('No relationship'),
+                'highlighted' => false,
+            ]);
 
             $this->set('title', __('Modify Tag Relationship'));
             $this->set(
@@ -1112,11 +1122,12 @@ class TagsController extends AppController
                 )
             );
             $this->set('options', $relationships);
-            if (empty($relationships[$tagConnector[$model_name]['relationship_type']])) {
+            if (!in_array($tagConnector[$model_name]['relationship_type'], array_column($relationships, 'name')) && $tagConnector[$model_name]['relationship_type'] !== '') {
                 $this->set('default', 'custom');
                 $this->set('default_custom', $tagConnector[$model_name]['relationship_type']);
             } else {
                 $this->set('default', $tagConnector[$model_name]['relationship_type']);
+                $this->set('default_custom', '');
             }
             $this->set('model', 'Tag');
             $this->set('onsubmit', 'modifyTagRelationship()');

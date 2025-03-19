@@ -56,6 +56,7 @@ class ACLComponent extends Component
             'checkAttachments' => array(),
             'checkComposites' => array('perm_site_admin'),
             'checkOrphanedAttributes' => array(),
+            'cleanDefaultFormValues' => ['*'],
             'delete' => array('perm_add'),
             'deleteSelected' => array('perm_add'),
             'describeTypes' => array('*'),
@@ -68,6 +69,7 @@ class ACLComponent extends Component
             'enrich' => ['perm_add'],
             'exportSearch' => array('*'),
             'fetchEditForm' => array('perm_add'),
+
             'fetchViewValue' => array('*'),
             'generateCorrelation' => array(),
             'getMassEditForm' => array('perm_add'),
@@ -534,6 +536,13 @@ class ACLComponent extends Component
         ),
         'objectTemplateElements' => array(
             'viewElements' => array('*')
+        ),
+        'objectRelationships' => array(
+            'index' => array('*'),
+            'add' => array(),
+            'delete' => array(),
+            'edit' => array(),
+            'toggleHighlighted' => array(),
         ),
         'orgBlocklists' => array(
             'add' => array(),

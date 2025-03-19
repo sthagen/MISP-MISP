@@ -36,6 +36,11 @@ class CRUDComponent extends Component
         if (!empty($options['conditions'])) {
             $query['conditions']['AND'][] = $options['conditions'];
         }
+        if (!empty($options['order'])) {
+            $query['order'] = $options['order'];
+        } else {
+            $query['order'] = $this->Controller->paginate['order'];
+        }
         if ($this->Controller->IndexFilter->isRest()) {
             if (!empty($this->Controller->paginate['fields'])) {
                 $query['fields'] = $this->Controller->paginate['fields'];

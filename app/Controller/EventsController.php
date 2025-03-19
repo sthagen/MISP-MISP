@@ -2180,21 +2180,9 @@ class EventsController extends AppController
                 }
                 // If the distribution is set to sharing group, check if the id provided is really visible to the user, if not throw an error.
                 if ($this->request->data['Event']['distribution'] == 4) {
-                    if ($this->userRole['perm_sync'] && $this->_isRest()) {
-                        if (isset($this->request->data['Event']['SharingGroup'])) {
-                            if (!isset($this->request->data['Event']['SharingGroup']['uuid'])) {
-                                if ($this->Event->SharingGroup->checkIfExists($this->request->data['Event']['SharingGroup']['uuid']) &&
-                                    $this->Event->SharingGroup->checkIfAuthorised($this->Auth->user(), $this->request->data['Event']['SharingGroup']['uuid'])) {
-                                    throw new MethodNotAllowedException(__('Invalid Sharing Group or not authorised (Sync user is not contained in the Sharing group).'));
-                                }
-                            }
-                        } elseif (!isset($sgs[$this->request->data['Event']['sharing_group_id']])) {
-                            throw new MethodNotAllowedException(__('Invalid Sharing Group or not authorised.'));
-                        }
-                    } else {
-                        if (!isset($sgs[$this->request->data['Event']['sharing_group_id']])) {
-                            throw new MethodNotAllowedException(__('Invalid Sharing Group or not authorised.'));
-                        }
+                    $canSGBeUsed = $this->Event->SharingGroup->checkIfCanBeUsed($this->Auth->user(), $this->_isRest(), $this->request->data, 'Event');
+                    if ($canSGBeUsed !== true) {
+                        throw new MethodNotAllowedException($canSGBeUsed);
                     }
                 } else {
                     // If the distribution is set to something "traditional", set the SG id to 0.

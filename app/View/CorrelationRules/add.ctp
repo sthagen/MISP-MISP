@@ -1,6 +1,8 @@
 <?php
 $edit = $this->request->params['action'] === 'edit' ? true : false;
-$this->request->data['CorrelationRule']['selector_list'] = json_encode($this->data['CorrelationRule']['selector_list'], JSON_PRETTY_PRINT);
+if (!empty($this->request->data['CorrelationRule']['selector_list'])) {
+    $this->request->data['CorrelationRule']['selector_list'] = json_decode($this->data['CorrelationRule']['selector_list'], true);
+}
 $fields = [
     [
         'field' => 'name',

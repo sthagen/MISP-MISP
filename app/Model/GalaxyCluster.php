@@ -100,6 +100,13 @@ class GalaxyCluster extends AppModel
         'json' => array('json', 'JsonExport', 'json'),
     );
 
+    public function __construct($id = false, $table = null, $ds = null)
+    {
+        parent::__construct();
+        $this->schema();
+        $this->_schema['distribution']['default'] = Configure::read('MISP.default_galaxy_distribution') ?? 1;
+    }
+
     public function beforeValidate($options = array())
     {
         $cluster = &$this->data['GalaxyCluster'];
@@ -795,7 +802,12 @@ class GalaxyCluster extends AppModel
             $cluster['GalaxyCluster']['published'] = false;
         }
         if (empty($existingGalaxyCluster)) {
-            $galaxy = $this->Galaxy->captureGalaxy($user, $cluster['GalaxyCluster']['Galaxy']);
+            $galaxy = $this->Galaxy->captureGalaxy($user, $cluster['GalaxyCluster']['Galaxy'], $fromPull, $orgId, $server);
+            if ($galaxy === false) {
+                $results['errors'][] = __('Could not save Galaxy');
+                $results['failed']++;
+                return $results;
+            }
             $cluster['GalaxyCluster']['galaxy_id'] = $galaxy['Galaxy']['id'];
             unset($cluster['GalaxyCluster']['id']);
             $this->create();
@@ -1685,6 +1697,7 @@ class GalaxyCluster extends AppModel
      */
     public function uploadClusterToServer(array $cluster, array $server, ServerSyncTool $serverSync, array $user)
     {
+        $cluster_id = $cluster['GalaxyCluster']['id'];
         $cluster = $this->__prepareForPushToServer($cluster, $server);
         if (is_numeric($cluster)) {
             return $cluster;
@@ -1696,8 +1709,8 @@ class GalaxyCluster extends AppModel
             }
             $serverSync->pushGalaxyCluster($cluster)->json();
         } catch (Exception $e) {
-            $title = __('Uploading GalaxyCluster (%s) to Server (%s)', $cluster['GalaxyCluster']['id'], $server['Server']['id']);
-            $this->loadLog()->createLogEntry($user, 'push', 'GalaxyCluster', $cluster['GalaxyCluster']['id'], $title, $e->getMessage());
+            $title = __('Uploading GalaxyCluster (%s) to Server (%s)', $cluster_id, $server['Server']['id']);
+            $this->loadLog()->createLogEntry($user, 'push', 'GalaxyCluster', $cluster_id, $title, $e->getMessage());
 
             $this->logException("Could not push galaxy cluster to remote server {$serverSync->serverId()}", $e);
             return $e->getMessage();
@@ -1942,12 +1955,15 @@ class GalaxyCluster extends AppModel
             return false;
         }
 
-        $cluster = $this->updatePulledClusterBeforeInsert($cluster, $serverSync->server(), $user);
+        $remoteUser = $serverSync->cachedUserInfo();
+        $remotePermSyncInternal = !empty($remoteUser['Role']['perm_sync_internal']);
+
+        $cluster = $this->updatePulledClusterBeforeInsert($cluster, $serverSync->server(), $user, $remotePermSyncInternal);
         $result = $this->captureCluster($user, $cluster, $fromPull=true, $orgId=$serverSync->server()['Server']['org_id']);
         return $result['success'];
     }
 
-    private function updatePulledClusterBeforeInsert($cluster, $server, $user)
+    private function updatePulledClusterBeforeInsert($cluster, $server, $user, $remotePermSyncInternal = false)
     {
         // The cluster came from a pull, so it should be locked and distribution should be adapted.
         $cluster['GalaxyCluster']['locked'] = true;
@@ -1955,7 +1971,7 @@ class GalaxyCluster extends AppModel
             $cluster['GalaxyCluster']['distribution'] = '1';
         }
 
-        if (empty(Configure::read('MISP.host_org_id')) || !$server['Server']['internal'] || Configure::read('MISP.host_org_id') != $server['Server']['org_id']) {
+        if (empty(Configure::read('MISP.host_org_id')) || !$server['Server']['internal'] || Configure::read('MISP.host_org_id') != $server['Server']['org_id'] || !$remotePermSyncInternal) {
             switch ($cluster['GalaxyCluster']['distribution']) {
                 case 1:
                     $cluster['GalaxyCluster']['distribution'] = 0; // if community only, downgrade to org only after pull

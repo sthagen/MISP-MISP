@@ -1796,6 +1796,7 @@ class UsersController extends AppController
                 $fieldsDescrStr = 'User (' . $user['id'] . '): ' . $user['email']. ' wrong OTP token';
                 $this->User->extralog($user, "login_fail", $fieldsDescrStr, '');
                 $this->Bruteforce->insert($user['email']);
+                $this->request->data['User']['otp'] = '';
             }
         }
         // GET Request or wrong OTP, just show the form

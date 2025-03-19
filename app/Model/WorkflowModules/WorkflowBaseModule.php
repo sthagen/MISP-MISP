@@ -129,7 +129,7 @@ class WorkflowBaseModule
             ])
         ];
         $result = $mispModule->queryModuleServer($postData, false, 'Enrichment', false, [], true);
-        if (!empty($result['error'])) {
+        if (!empty($result['error']) || $result === false) {
             return '';
         }
         $rendered = $result['results'][0]['values'][0];
@@ -238,7 +238,7 @@ class WorkflowBaseModule
                 unset($items[$i]);
             }
         }
-        return $items;
+        return array_values($items);
     }
 
     protected function addNotification(array $errors, string $severity, string $text, string $description='', array $details=[], bool $showInSidebar=false, bool $showInNode=false): array
@@ -492,6 +492,7 @@ class WorkflowBaseActionModule extends WorkflowBaseModule
 class WorkflowFilteringLogicModule extends WorkflowBaseLogicModule
 {
     public $blocking = false;
+    public $isFiltering = false;
     public $inputs = 1;
     public $outputs = 2;
 

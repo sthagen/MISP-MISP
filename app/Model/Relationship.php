@@ -194,4 +194,16 @@ class Relationship extends AnalystData
 
         return $inboundRelations;
     }
+
+    public function countRelationships(): array
+    {
+        $this->virtualFields['type_count'] = 'COUNT(Relationship.id)';
+        $counts = $this->find('list', [
+            'recursive' => -1,
+            'fields' => ['Relationship.relationship_type', 'type_count'],
+            'group' => ['Relationship.relationship_type'],
+        ]);
+        unset($this->virtualFields['reference_count']);
+        return $counts;
+    }
 }
