@@ -100,7 +100,7 @@ class GalaxyClusterRelation extends AppModel
                     ]
                 ]
             ];
-            $conditionsSourceCluster = $clusterConditions ? $this->SourceCluster->buildConditions($user, true) : [];
+            $conditionsSourceCluster = $clusterConditions ? $this->SourceCluster->buildConditions($user, true, 'SourceCluster') : [];
             $conditions = [
                 'AND' => [
                     $conditionsRelations,
