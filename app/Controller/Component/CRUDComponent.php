@@ -38,7 +38,7 @@ class CRUDComponent extends Component
         }
         if (!empty($options['order'])) {
             $query['order'] = $options['order'];
-        } else {
+        } else if (!empty($this->Controller->paginate['order'])) {
             $query['order'] = $this->Controller->paginate['order'];
         }
         if ($this->Controller->IndexFilter->isRest()) {

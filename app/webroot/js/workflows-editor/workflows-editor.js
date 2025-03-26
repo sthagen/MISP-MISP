@@ -1555,6 +1555,20 @@ function afterNodeDrawCallback() {
     var $nodes = $drawflow.find('.drawflow-node')
     $nodes.find('.start-chosen').each(function() {
         var chosenOptions = $(this).data('chosen_options')
+        var $select = $(this)
+        var savedValues = $select.data('saved_values')
+        if (chosenOptions.select_options_url) {
+            $.ajax({
+                success: function (newOptions, textStatus) {
+                    updateChosenOptions($select, newOptions, savedValues)
+                },
+                error: function (jqXHR, textStatus, errorThrown) {
+                    showMessage('fail', 'Could not get options from select_options_url');
+                },
+                type: "get",
+                url: chosenOptions.select_options_url
+            })
+        }
         $(this).chosen(chosenOptions).trigger('change')
     })
     toggleDisplayOnFields()
@@ -1565,6 +1579,20 @@ function afterNodeDrawCallback() {
 function afterModalShowCallback() {
     $blockModal.find('.start-chosen').each(function() {
         var chosenOptions = $(this).data('chosen_options')
+        var $select = $(this)
+        var savedValues = $select.data('saved_values')
+        if (chosenOptions.select_options_url) {
+            $.ajax({
+                success: function (newOptions, textStatus) {
+                    updateChosenOptions($select, newOptions, savedValues)
+                },
+                error: function (jqXHR, textStatus, errorThrown) {
+                    showMessage('fail', 'Could not get options from select_options_url');
+                },
+                type: "get",
+                url: chosenOptions.select_options_url
+            })
+        }
         $(this).chosen(chosenOptions).trigger('change')
     })
     var cmOptions = {
@@ -1639,6 +1667,19 @@ function enablePickerCreateNewOptions() {
             }
         })
     })
+}
+
+function updateChosenOptions($select, options, savedValues) {
+    options.forEach(option => {
+        var $newOption = $('<option>')
+            .val(option)
+            .text(option)
+        if (savedValues.includes(option)) {
+            $newOption.attr('selected', 'selected')
+        }
+        $select.append($newOption);
+    });
+    $select.trigger('chosen:updated');
 }
 
 function enableHashpathPicker() {
@@ -1799,7 +1840,7 @@ function genSelect(options, forNode = true) {
     if (options.disabled !== undefined) {
         $select.prop('disabled', options.disabled == true)
     }
-    var selectOptions = options.options
+    var selectOptions = options.options ?? []
     if (!Array.isArray(selectOptions)) {
         selectOptions = Object.keys(options.options).map((k) => { return { name: options.options[k], value: k } })
     }
@@ -1837,6 +1878,7 @@ function genSelect(options, forNode = true) {
     }
     $select
         .attr('data-paramid', options.param_id)
+        .attr('data-saved_values', options.value)
         .attr('onchange', 'handleSelectChange(this)')
     $label.append($select)
     $container.append($label)

@@ -1071,10 +1071,10 @@ class GalaxyCluster extends AppModel
                 'Galaxy',
                 'GalaxyElement',
                 'GalaxyClusterRelation' => array(
-                    'conditions' => $this->GalaxyClusterRelation->buildConditions($user, false, 'TargetCluster'),
+                    'conditions' => $this->GalaxyClusterRelation->buildConditions($user, false, 'SourceCluster'),
                     'GalaxyClusterRelationTag',
                     'SharingGroup',
-                    'TargetCluster'
+                    'SourceCluster'
                 ),
                 'Orgc',
                 'Org',

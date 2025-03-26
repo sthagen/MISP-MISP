@@ -5954,7 +5954,7 @@ class EventsController extends AppController
             $workflows = $this->Workflow->fetchAdHocWorkflows(true);
             $workflows = $this->Workflow->attachTriggerParamsToWorkflow($workflows);
             $allowedWorkflows = array_filter($workflows, function($workflow) {
-                return $workflow['trigger_scope'] == 'passed_event_ids';
+                return $workflow['trigger_scope'] == 'passed_event_ids' && !empty($workflow['Workflow']['enabled']);
             });
             $this->layout = false;
             $this->set('workflows', $allowedWorkflows);
