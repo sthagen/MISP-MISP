@@ -33,7 +33,7 @@ class AppController extends Controller
 
     public $helpers = array('OrgImg', 'FontAwesome', 'UserName');
 
-    private $__queryVersion = '175';
+    private $__queryVersion = '176';
     public $pyMispVersion = '2.5.10';
     public $phpmin = '7.2';
     public $phprec = '7.4';
@@ -1027,7 +1027,7 @@ class AppController extends Controller
 
     private function __captureParam($data, $param, $value)
     {
-        if ($this->modelClass->checkParam($param)) {
+        if ($this->{$this->modelClass}->checkParam($param)) {
             $data[$param] = $value;
         }
         return $data;
@@ -1069,10 +1069,7 @@ class AppController extends Controller
                     $temp = $request->data;
                 }
                 if (empty($options['paramArray'])) {
-                    foreach ($options['paramArray'] as $param => $value) {
-                        $data = $this->__captureParam($data, $param, $value);
-                    }
-                    $data = array_merge($data, $temp);
+                    $data = $temp;
                 } else {
                     foreach ($options['paramArray'] as $param) {
                         if (str_ends_with($param, '*')) {
@@ -1402,9 +1399,23 @@ class AppController extends Controller
         if (empty($filters) && $this->request->is('get')) {
             throw new BadRequestException(__('Restsearch queries using GET and no parameters are not allowed. If you have passed parameters via a JSON body, make sure you use POST requests.'));
         }
+
         if (empty($filters['returnFormat'])) {
-            $filters['returnFormat'] = 'json';
+            $acceptHeader = $this->request->header('Accept');
+
+            if (preg_match('#application/([a-zA-Z0-9\-\+]+)#', $acceptHeader, $matches)) {
+                $format = strtolower(trim($matches[1]));
+            } elseif (preg_match('#text/csv#', $acceptHeader, $matches)) {
+                $format = 'csv';
+            } else {
+                $format = 'json';
+            }
+        
+            if (isset($this->$modelName->validFormats[$format])) {
+                $filters['returnFormat'] = $format;
+            }
         }
+        
         unset($filterData);
         if ($filters === false) {
             return $exception;

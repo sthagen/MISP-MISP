@@ -48,7 +48,18 @@ class AttributesController extends AppController
         }
     }
 
-    public function cleanDefaultFormValues(array $filters): array
+    private function __massageSearchFilters(array $filters): array
+    {
+        $multiLineFields = ['value', 'tags', 'org_id', 'sharing_group_id', 'uuid'];
+        foreach ($multiLineFields as $field) {
+            if (isset($filters[$field]) && strstr($filters[$field], "\n")) {
+                $filters[$field] = explode("\n", rtrim($filters[$field], "\n"));
+            }
+        }
+        return $filters;
+    }
+
+    private function __cleanDefaultFormValues(array $filters): array
     {
         foreach ($filters as $key => $value) {
             if (in_array($key, ['type', 'category']) && $value === 'ALL') {
@@ -60,8 +71,11 @@ class AttributesController extends AppController
             if ($key === 'to_ids' && $value === '0') {
                 unset($filters[$key]);
             }
+            if ($key === 'enforceWarninglist' && $value === '0') {
+                unset($filters[$key]);
+            }
             if (is_array($value)) {
-                $filters[$key] = $this->cleanDefaultFormValues($value);
+                $filters[$key] = $this->__cleanDefaultFormValues($value);
             } elseif ($value === '') {
                 unset($filters[$key]);
             }
@@ -82,18 +96,29 @@ class AttributesController extends AppController
         }
         $params['conditions']['AND'][] = $this->Attribute->buildConditions($user);
         $paramArray = [
-            'value' , 'type', 'category', 'org_id', 'tags', 'to_ids', 'first_seen', 'last_seen', 'limit', 'page', 'sort', 'direction'
+            'value' , 'type', 'category', 'org_id', 'tags', 'to_ids', 'first_seen', 'last_seen', 'search_token', 'uuid', 'page', 'limit', 'sort', 'direction'
         ];
         $filterData = array(
             'request' => $this->request,
             'named_params' => $this->request->params['named'],
             'paramArray' => $paramArray,
-            'ordered_url_params' => func_get_args(),
-            'additional_delimiters' => PHP_EOL
+            'ordered_url_params' => func_get_args()
         );
         $exception = false;
         $filters = $this->_harvestParameters($filterData, $exception);
-        $filters = $this->cleanDefaultFormValues($filters);
+        if (!$this->_isRest()) {
+            if ($this->request->is('post') && empty($filters['search_token'])) {
+                $search_token = $this->Attribute->setSearchParamsByToken($this->request->data);
+                $this->set('search_token', $search_token);
+            } else if (!empty($filters['search_token'])) {
+                $filters = $this->Attribute->getSearchParamsByToken($filters);
+                $this->set('search_token', $filters['search_token']);
+            }
+        }
+        if (!$this->_isRest()) {
+            $filters = $this->__cleanDefaultFormValues($filters);
+            $filters = $this->__massageSearchFilters($filters);
+        }
         $request_filters = $filters;
         $conditions = $this->paginate['conditions'];
         $subqueryElements = $this->Attribute->Event->harvestSubqueryElements($filters);
@@ -108,7 +133,7 @@ class AttributesController extends AppController
         }
         $this->set('params', $params);
         $conditions = $this->Attribute->buildFilterConditions($user, $filters, false);
-        $params = [];
+        $params = !empty($params['enforceWarninglist']) ? ['enforceWarninglist' => 1] : [];
         if (!empty($filters['direction'])) {
             $params['direction'] = $filters['direction'];
         }
@@ -123,6 +148,7 @@ class AttributesController extends AppController
             $params['conditions'] = $conditions;
         }
         $params['flatten'] = 1;
+        $params['includeWarninglistHits'] = 1;
         if ($this->_isRest()) {
             if (!empty($filters['page'])) {
                 $params['page'] = $filters['page'];
@@ -135,6 +161,7 @@ class AttributesController extends AppController
             $params['page'] = !empty($filters['page']) ? $filters['page'] : 1;
             $params['limit'] = !empty($filters['limit']) ? $filters['limit'] : 60;
             $this->paginate['conditions'] = $conditions;
+
             $attributes = $this->Attribute->fetchAttributes($user, $params);
             App::uses('CustomPaginationTool', 'Tools');
             $customPagination = new CustomPaginationTool();
@@ -184,7 +211,6 @@ class AttributesController extends AppController
 
         list($attributes, $sightingsData) = $this->__searchUI($attributes, $user);
         $exports = array_keys($this->Attribute->validFormats);
-        $this->set('paramArray', array_merge($paramArray, ['?']));
         $this->set('exports', $exports);
         $request_filters = array_diff_key($request_filters, array_flip(['direction', 'page', 'limit', 'sort']));
         $export_filters = '/';
@@ -199,6 +225,8 @@ class AttributesController extends AppController
                 }
             }
         }
+        $this->set('paramArray', $paramArray);
+        $this->set('passedArgsArray', $this->passedArgs);
         $this->set('export_filters', $export_filters);
         $this->set('sightingsData', $sightingsData);
         $this->set('orgTable', array_column($orgTable, 'name', 'id'));
@@ -2120,6 +2148,7 @@ class AttributesController extends AppController
             $category = $this->request->data['Attribute']['category'];
             $type = $this->request->data['Attribute']['type'];
             $to_ids = $this->request->data['Attribute']['to_ids'];
+
 
             $oldAttributes = $this->Attribute->find('all', array(
                 'conditions' => array(

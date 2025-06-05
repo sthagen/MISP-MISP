@@ -1,5 +1,5 @@
 <div class="attributes form">
-<?php echo $this->Form->create('Attribute', array('url' => $baseurl . '/attributes/index', 'type' => 'get'));?>
+<?php echo $this->Form->create('Attribute', array('url' => $baseurl . '/attributes/index'));?>
     <fieldset>
         <legend><?php echo __('Search Attribute'); ?></legend>
         <?= __('You can search for attributes based on contained expression within the value, event ID, submitting organisation, category and type. <br>For the value, event ID and organisation, you can enter several search terms by entering each term as a new line. To exclude things from a result, use the NOT operator (!) in front of the term.'); ?>
@@ -46,6 +46,11 @@
             echo $this->Form->input('to_ids', array(
                 'type' => 'checkbox',
                 'label' => __('Only find IOCs flagged as to IDS'),
+                'div' => ['style' => 'margin-top:1em'],
+            ));
+            echo $this->Form->input('enforceWarninglist', array(
+                'type' => 'checkbox',
+                'label' => __('Exclude IOCs spotted in a warning list'),
                 'div' => ['style' => 'margin-top:1em'],
             ));
             echo $this->Form->input('first_seen', array(

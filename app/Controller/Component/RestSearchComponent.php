@@ -85,6 +85,8 @@ class RestSearchComponent extends Component
             'last',
             'eventid',
             'withAttachments',
+            'extended',
+            'extending',
             'metadata',
             'uuid',
             'publish_timestamp',
