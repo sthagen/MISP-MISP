@@ -498,7 +498,7 @@ class Server extends AppModel
         $passAlong = $server['Server']['id'];
         if (!$existingEvent) {
             // add data for newly imported events
-            if (isset($event['Event']['protected']) && $event['Event']['protected']) {
+            if (!$server['Server']['internal'] && isset($event['Event']['protected']) && $event['Event']['protected']) {
                 if (!$eventModel->CryptographicKey->validateProtectedEvent($response->body, $user, $response->getHeader('x-pgp-signature'), $event)) {
                     $fails[$eventId] = __('Event failed the validation checks. The remote instance claims that the event can be signed with a valid key which is sus.');
                     return false;
@@ -518,7 +518,7 @@ class Server extends AppModel
             if (!$existingEvent['Event']['locked'] && !$server['Server']['internal']) {
                 $fails[$eventId] = __('Blocked an edit to an event that was created locally. This can happen if a synchronised event that was created on this instance was modified by an administrator on the remote side.');
             } else {
-                if ($existingEvent['Event']['protected']) {
+                if (!$server['Server']['internal'] && $existingEvent['Event']['protected']) {
                     if (!$eventModel->CryptographicKey->validateProtectedEvent($response->body, $user, $response->getHeader('x-pgp-signature'), $existingEvent)) {
                         $fails[$eventId] = __('Event failed the validation checks. The remote instance claims that the event can be signed with a valid key which is sus.');
                         return false;
@@ -6451,6 +6451,13 @@ class Server extends AppModel
                     'value' => '7200',
                     'test' => 'testForNumeric',
                     'type' => 'numeric',
+                    'null' => true
+                ),
+                'default_restsearch_limit' => array(
+                    'level' => 1,
+                    'description' => 'Default number of matching result for restSearch API if none is provided when adding a new role. Leave empty(0) to set as unlimited.',
+                    'value' => 0,
+                    'errorMessage' => '',
                     'null' => true
                 ),
                 'attribute_filters_block_only' => array(

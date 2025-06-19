@@ -624,22 +624,53 @@ class MispObject extends AppModel
                 )
             );
         }
-        $params = array(
-            'conditions' => $this->buildConditions($user),
-            'recursive' => -1,
-            'contain' => array(
-                'Event' => array(
-                    'fields' => array('id', 'info', 'org_id', 'orgc_id'),
+        if ($this->checkDbSupport('reverseJoin')) {
+            $params = array(
+                'fields' => array(
+                    'Object.*',          // or explicitly list them
+                    'Event.id', 'Event.info', 'Event.org_id', 'Event.orgc_id'
                 ),
-                'Attribute' => array(
-                    'conditions' => $attributeConditions,
-                    //'ShadowAttribute',
-                    'AttributeTag' => array(
-                        'Tag'
+                'conditions' => $this->buildConditions($user),
+                'recursive' => -1,
+                'joins' => array(
+                    array(
+                        'table' => 'events',
+                        'alias' => 'Event',
+                        'type' => 'STRAIGHT_REVERSE',
+                        'conditions' => array(
+                            'Event.id = Object.event_id'
+                        )
                     )
-                )
-            ),
-        );
+                ),
+                'contain' => array(
+                    'Attribute' => array(
+                        'conditions' => $attributeConditions,
+                        //'ShadowAttribute',
+                        'AttributeTag' => array(
+                            'Tag'
+                        )
+                    )
+                ),
+            );
+        } else {
+            $params = array(
+                'conditions' => $this->buildConditions($user),
+                'recursive' => -1,
+                'contain' => array(
+                    'Event' => array(
+                        'fields' => array('id', 'info', 'org_id', 'orgc_id'),
+                    ),
+                    'Attribute' => array(
+                        'conditions' => $attributeConditions,
+                        //'ShadowAttribute',
+                        'AttributeTag' => array(
+                            'Tag'
+                        )
+                    )
+                ),
+            );
+        }
+        
         if (!empty($options['metadata'])) {
             unset($params['contain']['Attribute']);
         }
