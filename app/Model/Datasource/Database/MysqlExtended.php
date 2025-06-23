@@ -24,36 +24,6 @@ class MysqlExtended extends Mysql
     ];
 
     /**
-     * Output MD5 as binary, that is faster and uses less memory
-     * @param string $value
-     * @return string
-     */
-    public function cacheMethodHasher($value)
-    {
-        return md5($value, true);
-    }
-
-        /**
-     * Renders a final SQL JOIN statement
-     *
-     * @param array $data The data to generate a join statement for.
-     * @return string
-     */
-    public function renderJoinStatement($data) {
-        //Fixed deprecation notice in PHP8.1 - fallback to empty string
-        if (!empty($data['type']) && strtoupper($data['type']) === 'STRAIGHT') {
-            return "{$data['type']}_JOIN {$data['table']} {$data['alias']} ON ({$data['conditions']})";
-        }
-        if (!empty($data['type']) && strtoupper($data['type']) === 'STRAIGHT_REVERSE') {
-            return "STRAIGHT_JOIN {$data['table']} AS {$data['alias']} ON ({$data['conditions']})";
-        }
-        if (strtoupper($data['type'] ?? "") === 'CROSS' || empty($data['conditions'])) {
-            return "{$data['type']} JOIN {$data['table']} {$data['alias']}";
-        }
-        return trim("{$data['type']} JOIN {$data['table']} {$data['alias']} ON ({$data['conditions']})");
-    }
-
-        /**
      * Builds and generates a JOIN condition from an array. Handles final clean-up before conversion.
      *
      * @param array $join An array defining a JOIN condition in a query.
@@ -84,6 +54,36 @@ class MysqlExtended extends Mysql
 		}
 		return $this->renderJoinStatement($data);
 	}
+
+    /**
+     * Output SHA1 as binary, that is faster and uses less memory
+     * @param string $value
+     * @return string
+     */
+    public function cacheMethodHasher($value)
+    {
+        return md5($value, true);
+    }
+
+        /**
+     * Renders a final SQL JOIN statement
+     *
+     * @param array $data The data to generate a join statement for.
+     * @return string
+     */
+    public function renderJoinStatement($data) {
+        if (!empty($data['type']) && strtoupper($data['type']) === 'STRAIGHT') {
+            return "STRAIGHT_JOIN {$data['table']} {$data['alias']} ON ({$data['conditions']})";
+        }
+        if (!empty($data['type']) && strtoupper($data['type']) === 'STRAIGHT_REVERSE') {
+            return "STRAIGHT_JOIN {$data['table']} {$data['alias']} ON ({$data['conditions']})";
+        }
+        //Fixed deprecation notice in PHP8.1 - fallback to empty string
+        if (strtoupper($data['type'] ?? "") === 'CROSS' || empty($data['conditions'])) {
+            return "{$data['type']} JOIN {$data['table']} {$data['alias']}";
+        }
+        return trim("{$data['type']} JOIN {$data['table']} {$data['alias']} ON ({$data['conditions']})");
+    }
 
     /**
      * Builds and generates an SQL statement from an array. Handles final clean-up before conversion.

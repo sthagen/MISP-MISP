@@ -53,7 +53,7 @@ class AttributesController extends AppController
         $multiLineFields = ['value', 'tags', 'org_id', 'sharing_group_id', 'uuid'];
         foreach ($multiLineFields as $field) {
             if (isset($filters[$field]) && strstr($filters[$field], "\n")) {
-                $filters[$field] = explode("\n", rtrim($filters[$field], "\n"));
+                $filters[$field] = preg_split('/\n|\r\n?/', $filters[$field]);
             }
         }
         return $filters;
@@ -222,10 +222,10 @@ class AttributesController extends AppController
             foreach ($request_filters as $k => $v) {
                 if (is_array($v)) {
                     foreach ($v as $vv) {
-                        $export_filters .= $k . '[]:' . $vv . '/';
+                        $export_filters .= urlencode($k) . '[]:' . urlencode($vv) . '/';
                     }
                 } else {
-                    $export_filters .= $k . ':' . $v . '/';
+                    $export_filters .= urlencode($k) . ':' . urlencode($v) . '/';
                 }
             }
         }
