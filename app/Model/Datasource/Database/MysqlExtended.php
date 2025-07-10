@@ -23,6 +23,8 @@ class MysqlExtended extends Mysql
         'text' => PDO::PARAM_STR
     ];
 
+    const IDENTIFIER_QUOTE = '`';
+
     /**
      * Builds and generates a JOIN condition from an array. Handles final clean-up before conversion.
      *
