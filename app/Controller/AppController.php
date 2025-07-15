@@ -275,6 +275,8 @@ class AppController extends Controller
         $user = $this->Auth->user();
         if ($user) {
             Configure::write('CurrentUserId', $user['id']);
+            Configure::write('CurrentUserEmail', $user['email']);
+            Configure::write('CurrentUserIP', $this->User->_remoteIp());
             $this->__logAccess($user);
 
             // Try to run updates

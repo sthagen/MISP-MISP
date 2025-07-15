@@ -1883,7 +1883,7 @@ class Attribute extends AppModel
                 [
                     'table'      => 'events',
                     'alias'      => 'Event',
-                    'type'       => 'STRAIGHT',
+                    'type'       => $this->checkDbSupport('straightJoin') ? 'STRAIGHT' : 'LEFT',
                     'conditions' => ['Event.id = Attribute.event_id']
                 ],
                 [

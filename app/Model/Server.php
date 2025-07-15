@@ -6103,6 +6103,22 @@ class Server extends AppModel
                     'type' => 'boolean',
                     'null' => true
                 ],
+                'log_errors_ndjson' => [
+                    'level' =>  self::SETTING_RECOMMENDED,
+                    'description' => __('Log errors in ndjson format additionally to error.log.)'),
+                    'value' => false,
+                    'test' => 'testBool',
+                    'type' => 'boolean'
+                ],
+                'log_errors_ndjson_path' => [
+                    'level' =>  self::SETTING_RECOMMENDED,
+                    'description' => __('Path for the ndjson error log file - defaults to ' . APP . '/app/tmp/logs/error.log.ndjson.'),
+                    'value' => APP . '/tmp/logs/error.log.ndjson',
+                    'test' => 'testForEmpty',
+                    'type' => 'string',
+                    'cli' => true,
+                    'null' => true
+                ],
                 'disable_seen_ips_authkeys' => [
                     'level' => self::SETTING_RECOMMENDED,
                     'description' => __('Disable the storing of IP addresses used to make API calls with an AuthKey against this AuthKey in the database.'),

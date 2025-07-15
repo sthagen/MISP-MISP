@@ -61,7 +61,7 @@ class BenchmarkTool
             $benchmarkData = [
                 'user' => $options['user'],
                 'endpoint' => $options['controller'] . '/' . $options['action'],
-                'user_agent' => $_SERVER['HTTP_USER_AGENT'],
+                'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'Unknown',
                 'sql_queries' => $sql['count'],
                 'sql_time' => isset($options['sql_time']) ? $options['sql_time'] : $sql['time'],
                 'time' => (microtime(true) - $start_time),
