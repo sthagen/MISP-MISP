@@ -1801,20 +1801,23 @@ class Attribute extends AppModel
     public function fetchAttributes(array $user, array $options = [], &$result_count = false, $real_count = false, &$skipped_item_count = false)
     {
         if (!empty($options['list'])) {
+            $conditions = $this->buildConditions($user);
+            if (!empty($options['conditions'])) {
+                $conditions['AND'][] = $options['conditions'];
+            }
             if (!empty($options['event_ids'])) {
                 return $this->find('column', [
-                    'fields'     => ['Attribute.event_id'],
-                    'conditions' => $this->buildConditions($user) + (array)($options['conditions'] ?? []),
+                    'fields'     => ['DISTINCT(Attribute.event_id) as event_id'],
+                    'conditions' => $conditions,
                     'recursive'  => -1,
                     'contain'    => ['Event','Object'],
                     'order'      => false,
-                    'group'      => false,
-                    'unique'     => true
+                    'group'      => false
                 ]);
             }
             return $this->find('list', [
                 'fields'     => ['Attribute.event_id','Attribute.event_id'],
-                'conditions' => $this->buildConditions($user) + (array)($options['conditions'] ?? []),
+                'conditions' => $conditions,
                 'recursive'  => -1,
                 'contain'    => ['Event','Object'],
                 'order'      => false
@@ -3744,7 +3747,7 @@ class Attribute extends AppModel
      * NOTE WHEN MODIFYING: please ensure to run the script 'tools/gen_misp_types_categories.py' to update the new definitions everywhere. (docu, website, RFC, ... )
      * @return array[]
      */
-    private function generateTypeDefinitions()
+    public function generateTypeDefinitions()
     {
         return array(
             'md5' => array('desc' => __('A checksum in MD5 format'), 'formdesc' => __("You are encouraged to use filename|md5 instead. A checksum in md5 format, only use this if you don't know the correct filename"), 'default_category' => 'Payload delivery', 'to_ids' => 1),
