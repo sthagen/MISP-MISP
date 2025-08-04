@@ -995,7 +995,6 @@ class GalaxyCluster extends AppModel
         }
 
         $clusters = $this->fetchGalaxyClusters($user, $options, $fetchFullCluster, $fetchFullRelationship);
-
         if (!empty($clusters) && $postProcess) {
             $tagIds = array_change_key_case(array_flip($tagNames));
             foreach ($clusters as $k => $cluster) {
@@ -1127,7 +1126,6 @@ class GalaxyCluster extends AppModel
         } else {
             $clusters = $this->find('all', $params);
         }
-
         if (empty($clusters)) {
             return $clusters;
         }

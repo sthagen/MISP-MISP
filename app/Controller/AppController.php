@@ -1403,6 +1403,26 @@ class AppController extends Controller
         );
         $exception = false;
         $filters = $this->_harvestParameters($filterData, $exception, $this->_legacyParams);
+        if (isset($this->request->params['named']['search_token'])) {
+            $temp = $this->MispAttribute->getSearchParamsByToken(['search_token' => $this->request->params['named']['search_token']]);
+            foreach ($temp as $k => $temp_data) {
+                if ($temp[$k] === 'ALL' || $temp[$k] === '') {
+                    unset($temp[$k]);
+                    continue;
+                }
+                if ($k === 'limit') {
+                    unset($temp[$k]);
+                    continue;
+                }
+                if (str_contains($temp_data, PHP_EOL)) {
+                    $temp[$k] = explode(PHP_EOL, trim($temp_data));
+                    $temp[$k] = array_map(function($element) {
+                        return trim($element);
+                    }, $temp[$k]);
+                }
+            }
+            $filters = array_merge($filters, $temp);
+        }
         if (empty($filters) && $this->request->is('get')) {
             throw new BadRequestException(__('Restsearch queries using GET and no parameters are not allowed. If you have passed parameters via a JSON body, make sure you use POST requests.'));
         }
